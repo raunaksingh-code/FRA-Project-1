@@ -1,0 +1,6 @@
+{
+  "name": "FRA RiskLab: Portfolio Risk Analytics Dashboard",
+  "description": "Institutional-grade financial risk analytics dashboard analyzing High Risk vs Low Risk Indian equity portfolios with Markowitz Efficient Frontier, VaR/ES, and Stress Testing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
