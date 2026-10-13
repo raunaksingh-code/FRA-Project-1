@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { GlobalFilterState, FrontierOptimizationSummary } from '../types';
+import { MonthlyReturnRow, GlobalFilterState, FrontierOptimizationSummary } from '../types';
 import { runMarkowitzOptimization, solveTargetReturnPortfolio } from '../utils/optimizer';
 import { extractReturns } from '../utils/math';
-import { MONTHLY_RETURNS_DATA } from '../data/historicalData';
+import { REAL_YAHOO_MONTHLY_RETURNS } from '../data/realMarketData';
 import { PORTFOLIO_A_STOCKS, PORTFOLIO_B_STOCKS } from '../data/universe';
 import { EfficientFrontierPlot } from '../components/charts/Charts';
 import { TrendingUp, Target, Sliders, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -10,9 +10,14 @@ import { TrendingUp, Target, Sliders, CheckCircle2, AlertCircle } from 'lucide-r
 interface EfficientFrontierProps {
   filters: GlobalFilterState;
   onChangeFilters: (f: Partial<GlobalFilterState>) => void;
+  monthlyReturns?: MonthlyReturnRow[];
 }
 
-export function EfficientFrontierPage({ filters, onChangeFilters }: EfficientFrontierProps) {
+export function EfficientFrontierPage({
+  filters,
+  onChangeFilters,
+  monthlyReturns = REAL_YAHOO_MONTHLY_RETURNS,
+}: EfficientFrontierProps) {
   const [selectedPortfolio, setSelectedPortfolio] = useState<'Portfolio A' | 'Portfolio B'>('Portfolio A');
   const [maxStockWeight, setMaxStockWeight] = useState<number>(35); // 35% cap default
   const [targetReturnInput, setTargetReturnInput] = useState<number>(24); // 24% target
@@ -21,11 +26,11 @@ export function EfficientFrontierPage({ filters, onChangeFilters }: EfficientFro
   const universeStocks = selectedPortfolio === 'Portfolio A' ? PORTFOLIO_A_STOCKS : PORTFOLIO_B_STOCKS;
   const tickers = universeStocks.map((s) => s.ticker);
 
-  // Extract return series map
+  // Extract return series map from verified returns
   const stockReturnsMap = useMemo(() => {
     const map: Record<string, number[]> = {};
     tickers.forEach((t) => {
-      let r = extractReturns(MONTHLY_RETURNS_DATA, t);
+      let r = extractReturns(monthlyReturns, t);
       // For regime comparisons:
       if (activeRegime === 'Calm') {
         // First 36 months proxy
@@ -37,7 +42,7 @@ export function EfficientFrontierPage({ filters, onChangeFilters }: EfficientFro
       map[t] = r;
     });
     return map;
-  }, [tickers, activeRegime]);
+  }, [tickers, activeRegime, monthlyReturns]);
 
   // Run Markowitz Optimization
   const optimizationSummary: FrontierOptimizationSummary = useMemo(() => {

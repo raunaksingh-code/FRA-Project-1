@@ -303,52 +303,142 @@ export function PortfolioConstructionPage({
             </div>
           </div>
 
-          {/* Rolling SVG Chart */}
-          <div className="relative w-full">
-            <svg viewBox="0 0 450 180" className="w-full h-auto select-none">
-              <line x1={40} y1={20} x2={40} y2={150} stroke="#cbd5e1" />
-              <line x1={40} y1={90} x2={440} y2={90} stroke="#94a3b8" strokeDasharray="3 3" />
-              <text x={35} y={93} fontSize="9" fill="#64748b" textAnchor="end">0%</text>
-              <text x={35} y={25} fontSize="9" fill="#64748b" textAnchor="end">+60%</text>
-              <text x={35} y={150} fontSize="9" fill="#64748b" textAnchor="end">-30%</text>
+          {/* Rolling SVG Chart with Dynamic Bounds & Hover */}
+          {(() => {
+            const allRets = [
+              ...rolling12A.map((d) => d.rollingReturnPct),
+              ...rolling12B.map((d) => d.rollingReturnPct),
+              0,
+            ];
+            const minR = Math.floor((Math.min(...allRets) - 5) / 10) * 10;
+            const maxR = Math.ceil((Math.max(...allRets) + 5) / 10) * 10;
+            const rangeR = Math.max(1, maxR - minR);
 
-              {/* Lines */}
-              {rolling12A.length > 0 && (
-                <path
-                  d={rolling12A.map((d, i) => {
-                    const x = 45 + (i / (rolling12A.length - 1)) * 390;
-                    const y = 90 - (d.rollingReturnPct / 70) * 60;
-                    return `${i === 0 ? 'M' : 'L'} ${x} ${Math.max(15, Math.min(160, y))}`;
-                  }).join(' ')}
-                  fill="none"
-                  stroke="#f97316"
-                  strokeWidth="2"
-                />
-              )}
-              {rolling12B.length > 0 && (
-                <path
-                  d={rolling12B.map((d, i) => {
-                    const x = 45 + (i / (rolling12B.length - 1)) * 390;
-                    const y = 90 - (d.rollingReturnPct / 70) * 60;
-                    return `${i === 0 ? 'M' : 'L'} ${x} ${Math.max(15, Math.min(160, y))}`;
-                  }).join(' ')}
-                  fill="none"
-                  stroke="#0d9488"
-                  strokeWidth="2"
-                />
-              )}
-            </svg>
-            <div className="flex items-center justify-center gap-4 text-xs text-slate-600 mt-2">
-              <span className="flex items-center gap-1.5 text-orange-600 font-medium">
-                <span className="w-2.5 h-0.5 bg-orange-500 inline-block" />
-                Portfolio A Rolling 1-Yr Return
-              </span>
-              <span className="flex items-center gap-1.5 text-teal-700 font-medium">
-                <span className="w-2.5 h-0.5 bg-teal-600 inline-block" />
-                Portfolio B Rolling 1-Yr Return
-              </span>
-            </div>
-          </div>
+            const w = 450;
+            const h = 180;
+            const padL = 45;
+            const padR = 20;
+            const padT = 15;
+            const padB = 25;
+            const plotW = w - padL - padR;
+            const plotH = h - padT - padB;
+            const n = Math.max(rolling12A.length, rolling12B.length);
+
+            const getX = (i: number) => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
+            const getY = (r: number) => padT + plotH - ((r - minR) / rangeR) * plotH;
+            const zeroY = getY(0);
+
+            const yTicks = [minR, Math.round((minR + maxR) / 2), maxR];
+
+            return (
+              <div className="relative w-full">
+                <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto select-none">
+                  {/* Grid / Zero line */}
+                  <line x1={padL} y1={padT} x2={padL} y2={padT + plotH} stroke="#cbd5e1" />
+                  {minR <= 0 && maxR >= 0 && (
+                    <line
+                      x1={padL}
+                      y1={zeroY}
+                      x2={w - padR}
+                      y2={zeroY}
+                      stroke="#94a3b8"
+                      strokeDasharray="3 3"
+                    />
+                  )}
+
+                  {yTicks.map((val) => (
+                    <g key={val}>
+                      <line
+                        x1={padL}
+                        y1={getY(val)}
+                        x2={w - padR}
+                        y2={getY(val)}
+                        stroke="#f1f5f9"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={padL - 6}
+                        y={getY(val) + 3}
+                        fontSize="9"
+                        fill="#64748b"
+                        textAnchor="end"
+                        fontFamily="monospace"
+                      >
+                        {val > 0 ? `+${val}` : val}%
+                      </text>
+                    </g>
+                  ))}
+
+                  {/* Portfolio A Line */}
+                  {rolling12A.length > 0 && (
+                    <path
+                      d={rolling12A
+                        .map(
+                          (d, i) =>
+                            `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.rollingReturnPct)}`
+                        )
+                        .join(' ')}
+                      fill="none"
+                      stroke="#f97316"
+                      strokeWidth="2.2"
+                    />
+                  )}
+
+                  {/* Portfolio B Line */}
+                  {rolling12B.length > 0 && (
+                    <path
+                      d={rolling12B
+                        .map(
+                          (d, i) =>
+                            `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.rollingReturnPct)}`
+                        )
+                        .join(' ')}
+                      fill="none"
+                      stroke="#0d9488"
+                      strokeWidth="2.2"
+                    />
+                  )}
+
+                  {/* X Axis dates at start and end */}
+                  {rolling12A.length > 0 && (
+                    <>
+                      <text
+                        x={getX(0)}
+                        y={h - 6}
+                        fontSize="8.5"
+                        fill="#64748b"
+                        textAnchor="start"
+                        fontFamily="monospace"
+                      >
+                        {rolling12A[0].date}
+                      </text>
+                      <text
+                        x={getX(rolling12A.length - 1)}
+                        y={h - 6}
+                        fontSize="8.5"
+                        fill="#64748b"
+                        textAnchor="end"
+                        fontFamily="monospace"
+                      >
+                        {rolling12A[rolling12A.length - 1].date}
+                      </text>
+                    </>
+                  )}
+                </svg>
+
+                <div className="flex items-center justify-center gap-4 text-xs text-slate-600 mt-2">
+                  <span className="flex items-center gap-1.5 text-orange-600 font-medium">
+                    <span className="w-2.5 h-0.5 bg-orange-500 inline-block" />
+                    Portfolio A Rolling 1-Yr
+                  </span>
+                  <span className="flex items-center gap-1.5 text-teal-700 font-medium">
+                    <span className="w-2.5 h-0.5 bg-teal-600 inline-block" />
+                    Portfolio B Rolling 1-Yr
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 space-y-1">
             <div className="font-medium text-slate-700 flex items-center gap-1.5">

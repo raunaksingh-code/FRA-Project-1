@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X, Printer, Download, FileText, CheckCircle2 } from 'lucide-react';
 import { PortfolioPerformanceMetrics, StressTestResult, GlobalFilterState } from '../../types';
-import { formatINR } from '../../utils/math';
+import { formatINR, calculateDownsideBeta, calculateOrdinaryBeta } from '../../utils/math';
+import { DAILY_OBSERVATIONS } from '../../data/dailyRiskData';
 import { exportToCSV } from '../../utils/excel';
 
 interface ReportExportModalProps {
@@ -22,6 +23,28 @@ export function ReportExportModal({
   filters,
 }: ReportExportModalProps) {
   if (!isOpen) return null;
+
+  const dailyReturnsA = useMemo(() => DAILY_OBSERVATIONS.map((o) => o.returnA), []);
+  const dailyReturnsB = useMemo(() => DAILY_OBSERVATIONS.map((o) => o.returnB), []);
+  const dailyReturnsNifty = useMemo(() => DAILY_OBSERVATIONS.map((o) => o.returnNifty), []);
+
+  const downsideBetaA = useMemo(
+    () => calculateDownsideBeta(dailyReturnsA, dailyReturnsNifty),
+    [dailyReturnsA, dailyReturnsNifty]
+  );
+  const downsideBetaB = useMemo(
+    () => calculateDownsideBeta(dailyReturnsB, dailyReturnsNifty),
+    [dailyReturnsB, dailyReturnsNifty]
+  );
+
+  const ordinaryBetaA = useMemo(
+    () => calculateOrdinaryBeta(dailyReturnsA, dailyReturnsNifty),
+    [dailyReturnsA, dailyReturnsNifty]
+  );
+  const ordinaryBetaB = useMemo(
+    () => calculateOrdinaryBeta(dailyReturnsB, dailyReturnsNifty),
+    [dailyReturnsB, dailyReturnsNifty]
+  );
 
   const handlePrint = () => {
     window.print();
@@ -58,6 +81,18 @@ export function ReportExportModal({
         Metric: 'Max Drawdown (%)',
         'Portfolio A (High Risk)': metricsA.maximumDrawdownPct,
         'Portfolio B (Low Risk)': metricsB.maximumDrawdownPct,
+      },
+      {
+        Category: 'Executive Metric',
+        Metric: 'Ordinary Market Beta (β)',
+        'Portfolio A (High Risk)': ordinaryBetaA.beta,
+        'Portfolio B (Low Risk)': ordinaryBetaB.beta,
+      },
+      {
+        Category: 'Downside Asymmetry',
+        Metric: 'Downside Beta (β⁻, Nifty < 0)',
+        'Portfolio A (High Risk)': downsideBetaA.downsideBeta,
+        'Portfolio B (Low Risk)': downsideBetaB.downsideBeta,
       },
       {
         Category: 'Downside Tail Risk',
@@ -223,15 +258,21 @@ export function ReportExportModal({
                 </tr>
                 <tr>
                   <td className="p-2 font-sans font-medium text-slate-800">Ordinary Market Beta (β)</td>
-                  <td className="p-2 font-bold">1.35</td>
-                  <td className="p-2 font-bold">0.70</td>
-                  <td className="p-2">+0.65</td>
+                  <td className="p-2 font-bold">{ordinaryBetaA.beta.toFixed(2)}</td>
+                  <td className="p-2 font-bold">{ordinaryBetaB.beta.toFixed(2)}</td>
+                  <td className="p-2">
+                    {ordinaryBetaA.beta - ordinaryBetaB.beta >= 0 ? '+' : ''}
+                    {(ordinaryBetaA.beta - ordinaryBetaB.beta).toFixed(2)}
+                  </td>
                 </tr>
                 <tr className="bg-red-50/20">
                   <td className="p-2 font-sans font-bold text-red-950">Downside Beta (β⁻, Nifty &lt; 0)</td>
-                  <td className="p-2 font-bold text-red-700">1.48</td>
-                  <td className="p-2 font-bold text-teal-700">0.63</td>
-                  <td className="p-2 font-bold text-red-700">+0.85 (Amplified)</td>
+                  <td className="p-2 font-bold text-red-700">{downsideBetaA.downsideBeta.toFixed(2)}</td>
+                  <td className="p-2 font-bold text-teal-700">{downsideBetaB.downsideBeta.toFixed(2)}</td>
+                  <td className="p-2 font-bold text-red-700">
+                    {downsideBetaA.downsideBeta - downsideBetaB.downsideBeta >= 0 ? '+' : ''}
+                    {(downsideBetaA.downsideBeta - downsideBetaB.downsideBeta).toFixed(2)} (Amplified)
+                  </td>
                 </tr>
                 <tr>
                   <td className="p-2 font-sans font-medium text-slate-800">Sharpe Ratio (Rf=6%)</td>

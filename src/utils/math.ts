@@ -180,17 +180,22 @@ export function buildPortfolioReturnSeries(
   });
 
   if (rebalanceMonthly) {
-    // Rebalanced monthly: sum(w_i * r_{i, t})
+    // Rebalanced monthly: sum(w_i * r_{i, t}) re-normalized over traded equities
     return data.map((row) => {
+      const activeTickers = tickers.filter(
+        (t) => typeof row[t] === 'number' && !isNaN(row[t] as number)
+      );
+      if (activeTickers.length === 0) return { date: row.date, return: 0 };
+      const activeTotalWeight = activeTickers.reduce((sum, t) => sum + (normWeights[t] || 0), 0);
       let r = 0;
-      tickers.forEach((t) => {
-        const val = typeof row[t] === 'number' ? (row[t] as number) : 0;
-        r += normWeights[t] * val;
+      activeTickers.forEach((t) => {
+        const w = (normWeights[t] || 0) / activeTotalWeight;
+        r += w * (row[t] as number);
       });
       return { date: row.date, return: r };
     });
   } else {
-    // Buy-and-Hold with drift
+    // Buy-and-Hold with drift across traded equities
     let currentCapitalPerStock: Record<string, number> = {};
     tickers.forEach((t) => {
       currentCapitalPerStock[t] = normWeights[t];
@@ -201,7 +206,9 @@ export function buildPortfolioReturnSeries(
       const prevTotal = Object.values(currentCapitalPerStock).reduce((s, v) => s + v, 0);
       let newTotal = 0;
       tickers.forEach((t) => {
-        const ret = typeof row[t] === 'number' ? (row[t] as number) : 0;
+        const val = row[t];
+        const isTraded = typeof val === 'number' && !isNaN(val);
+        const ret = isTraded ? (val as number) : 0;
         const updated = currentCapitalPerStock[t] * (1 + ret);
         currentCapitalPerStock[t] = updated;
         newTotal += updated;

@@ -27,52 +27,81 @@ export function WealthGrowthChart({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   if (!data || data.length === 0) {
-    return <div className="h-64 flex items-center justify-center text-slate-400 text-sm">No series data available</div>;
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-400 text-sm">
+        No series data available
+      </div>
+    );
   }
 
   const width = 800;
-  const height = 300;
-  const padLeft = 70;
-  const padRight = 30;
-  const padTop = 25;
-  const padBottom = 35;
+  const height = 310;
+  const padLeft = 75;
+  const padRight = 45;
+  const padTop = 30;
+  const padBottom = 40;
 
   const chartW = width - padLeft - padRight;
   const chartH = height - padTop - padBottom;
+  const n = data.length;
 
   const allVals = data.flatMap((d) => [
     activePortfolio !== 'Portfolio B' ? d.valA : null,
     activePortfolio !== 'Portfolio A' ? d.valB : null,
     d.benchVal || null,
     initialCapital,
-  ]).filter((v): v is number => v !== null && !isNaN(v));
+  ]).filter((v): v is number => typeof v === 'number' && !isNaN(v));
 
-  const minVal = Math.min(...allVals) * 0.95;
+  const minVal = Math.min(...allVals) * 0.96;
   const maxVal = Math.max(...allVals) * 1.05;
+  const valRange = Math.max(1, maxVal - minVal);
 
-  const getX = (i: number) => padLeft + (i / (data.length - 1)) * chartW;
-  const getY = (v: number) => padTop + chartH - ((v - minVal) / (maxVal - minVal)) * chartH;
+  const getX = (i: number) => padLeft + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
+  const getY = (v: number) => padTop + chartH - ((v - minVal) / valRange) * chartH;
 
   const pathA = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.valA)}`).join(' ');
   const pathB = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.valB)}`).join(' ');
-  const pathBench = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.benchVal || initialCapital)}`).join(' ');
+  const pathBench = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.benchVal ?? initialCapital)}`).join(' ');
 
   const initialY = getY(initialCapital);
 
-  // Y-axis ticks
+  // Y-axis ticks (5 ticks)
   const yTicks = 5;
-  const yTickValues = Array.from({ length: yTicks }, (_, idx) => minVal + (idx / (yTicks - 1)) * (maxVal - minVal));
+  const yTickValues = Array.from({ length: yTicks }, (_, idx) => minVal + (idx / (yTicks - 1)) * valRange);
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * width;
+    if (relX < padLeft - 10 || relX > width - padRight + 10) {
+      setHoverIndex(null);
+      return;
+    }
+    const fraction = (relX - padLeft) / chartW;
+    const clampedIndex = Math.max(0, Math.min(n - 1, Math.round(fraction * (n - 1))));
+    setHoverIndex(clampedIndex);
+  };
 
   const hovered = hoverIndex !== null && data[hoverIndex] ? data[hoverIndex] : null;
+
+  // Selected date labels evenly sampled to guarantee NO overlapping labels
+  const tickCount = 6;
+  const tickIndices: number[] = [];
+  if (n > 0) {
+    for (let k = 0; k < tickCount; k++) {
+      const idx = Math.round((k / (tickCount - 1)) * (n - 1));
+      if (!tickIndices.includes(idx)) tickIndices.push(idx);
+    }
+  }
 
   return (
     <div className="relative w-full">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto overflow-visible select-none"
+        className="w-full h-auto overflow-visible select-none cursor-crosshair"
+        onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
-        {/* Grid lines */}
+        {/* Horizontal Grid lines */}
         {yTickValues.map((v, i) => (
           <g key={i}>
             <line
@@ -81,11 +110,12 @@ export function WealthGrowthChart({
               x2={width - padRight}
               y2={getY(v)}
               stroke="#e2e8f0"
-              strokeDasharray="4 4"
+              strokeDasharray="3 3"
+              strokeWidth="1"
             />
             <text
-              x={padLeft - 8}
-              y={getY(v) + 4}
+              x={padLeft - 10}
+              y={getY(v) + 3.5}
               fontSize="10"
               fill="#64748b"
               textAnchor="end"
@@ -96,34 +126,14 @@ export function WealthGrowthChart({
           </g>
         ))}
 
-        {/* Initial Capital baseline */}
-        <line
-          x1={padLeft}
-          y1={initialY}
-          x2={width - padRight}
-          y2={initialY}
-          stroke="#94a3b8"
-          strokeWidth="1.5"
-          strokeDasharray="3 3"
-        />
-        <text
-          x={width - padRight + 4}
-          y={initialY + 3}
-          fontSize="9"
-          fill="#64748b"
-          textAnchor="start"
-        >
-          Base
-        </text>
-
         {/* Lines */}
-        {/* Benchmark Nifty */}
+        {/* Benchmark NIFTY 50 */}
         <path
           d={pathBench}
           fill="none"
           stroke="#94a3b8"
-          strokeWidth="1.5"
-          strokeDasharray="4 4"
+          strokeWidth="1.8"
+          strokeDasharray="4 3"
         />
 
         {/* Portfolio A (Orange) */}
@@ -132,8 +142,9 @@ export function WealthGrowthChart({
             d={pathA}
             fill="none"
             stroke="#f97316"
-            strokeWidth="2.5"
+            strokeWidth="2.8"
             strokeLinecap="round"
+            strokeLinejoin="round"
           />
         )}
 
@@ -143,50 +154,104 @@ export function WealthGrowthChart({
             d={pathB}
             fill="none"
             stroke="#0d9488"
-            strokeWidth="2.5"
+            strokeWidth="2.8"
             strokeLinecap="round"
+            strokeLinejoin="round"
           />
         )}
 
-        {/* Hover vertical crosshair */}
-        {hoverIndex !== null && (
-          <line
-            x1={getX(hoverIndex)}
-            y1={padTop}
-            x2={getX(hoverIndex)}
-            y2={padTop + chartH}
-            stroke="#475569"
-            strokeWidth="1"
-            strokeDasharray="2 2"
-          />
+        {/* Ending dots */}
+        {n > 0 && (
+          <>
+            <circle
+              cx={getX(n - 1)}
+              cy={getY(data[n - 1].benchVal ?? initialCapital)}
+              r={3}
+              fill="#94a3b8"
+            />
+            {(activePortfolio === 'All' || activePortfolio === 'Portfolio A') && (
+              <circle
+                cx={getX(n - 1)}
+                cy={getY(data[n - 1].valA)}
+                r={4}
+                fill="#f97316"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+              />
+            )}
+            {(activePortfolio === 'All' || activePortfolio === 'Portfolio B') && (
+              <circle
+                cx={getX(n - 1)}
+                cy={getY(data[n - 1].valB)}
+                r={4}
+                fill="#0d9488"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+              />
+            )}
+          </>
         )}
 
-        {/* Invisible hit targets for mouse tracking */}
-        {data.map((_, i) => (
-          <rect
-            key={i}
-            x={getX(i) - chartW / (data.length * 2)}
-            y={padTop}
-            width={chartW / data.length}
-            height={chartH}
-            fill="transparent"
-            onMouseEnter={() => setHoverIndex(i)}
-          />
-        ))}
+        {/* Hover vertical crosshair & dots */}
+        {hoverIndex !== null && hovered && (
+          <g>
+            <line
+              x1={getX(hoverIndex)}
+              y1={padTop}
+              x2={getX(hoverIndex)}
+              y2={padTop + chartH}
+              stroke="#334155"
+              strokeWidth="1.2"
+              strokeDasharray="3 3"
+            />
+            {(activePortfolio === 'All' || activePortfolio === 'Portfolio A') && (
+              <circle
+                cx={getX(hoverIndex)}
+                cy={getY(hovered.valA)}
+                r={5}
+                fill="#f97316"
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+            )}
+            {(activePortfolio === 'All' || activePortfolio === 'Portfolio B') && (
+              <circle
+                cx={getX(hoverIndex)}
+                cy={getY(hovered.valB)}
+                r={5}
+                fill="#0d9488"
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+            )}
+            {hovered.benchVal && (
+              <circle
+                cx={getX(hoverIndex)}
+                cy={getY(hovered.benchVal)}
+                r={4}
+                fill="#64748b"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+              />
+            )}
+          </g>
+        )}
 
         {/* X-axis date labels */}
-        {data.filter((_, idx) => idx % Math.ceil(data.length / 8) === 0 || idx === data.length - 1).map((d) => {
-          const idx = data.indexOf(d);
+        {tickIndices.map((idx) => {
+          const pt = data[idx];
+          if (!pt) return null;
           return (
             <text
               key={idx}
               x={getX(idx)}
-              y={height - 8}
+              y={height - 12}
               fontSize="10"
               fill="#64748b"
               textAnchor="middle"
+              fontFamily="monospace"
             >
-              {d.date}
+              {pt.date}
             </text>
           );
         })}
@@ -195,48 +260,54 @@ export function WealthGrowthChart({
       {/* Tooltip */}
       {hovered && hoverIndex !== null && (
         <div
-          className="absolute z-20 pointer-events-none bg-slate-900/95 text-white px-3 py-2 rounded-lg text-xs shadow-xl border border-slate-700 backdrop-blur-sm"
+          className="absolute z-20 pointer-events-none bg-slate-900/95 text-white px-3.5 py-2.5 rounded-lg text-xs shadow-xl border border-slate-700 backdrop-blur-sm"
           style={{
-            left: `${Math.min(80, Math.max(15, (getX(hoverIndex) / width) * 100))}%`,
+            left: `${Math.min(75, Math.max(15, (getX(hoverIndex) / width) * 100))}%`,
             top: '15px',
           }}
         >
           <div className="font-semibold text-slate-300 border-b border-slate-700 pb-1 mb-1.5 flex justify-between gap-4">
             <span>Period: {hovered.date}</span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              Month {hoverIndex} of {n - 1}
+            </span>
           </div>
           {(activePortfolio === 'All' || activePortfolio === 'Portfolio A') && (
             <div className="flex items-center justify-between gap-4 py-0.5">
-              <span className="flex items-center gap-1.5 text-amber-400 font-medium">
+              <span className="flex items-center gap-1.5 text-orange-400 font-medium">
                 <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
-                Portfolio A:
+                Portfolio A (High Risk):
               </span>
-              <span className="font-mono">
+              <span className="font-mono font-bold text-orange-200">
                 {formatINR(hovered.valA)} (
-                {(((hovered.valA - initialCapital) / initialCapital) * 100).toFixed(1)}%)
+                {hovered.valA >= initialCapital ? '+' : ''}
+                {(((hovered.valA - initialCapital) / initialCapital) * 100).toFixed(2)}%)
               </span>
             </div>
           )}
           {(activePortfolio === 'All' || activePortfolio === 'Portfolio B') && (
             <div className="flex items-center justify-between gap-4 py-0.5">
-              <span className="flex items-center gap-1.5 text-teal-400 font-medium">
+              <span className="flex items-center gap-1.5 text-teal-300 font-medium">
                 <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />
-                Portfolio B:
+                Portfolio B (Low Risk):
               </span>
-              <span className="font-mono">
+              <span className="font-mono font-bold text-teal-200">
                 {formatINR(hovered.valB)} (
-                {(((hovered.valB - initialCapital) / initialCapital) * 100).toFixed(1)}%)
+                {hovered.valB >= initialCapital ? '+' : ''}
+                {(((hovered.valB - initialCapital) / initialCapital) * 100).toFixed(2)}%)
               </span>
             </div>
           )}
-          {hovered.benchVal && (
-            <div className="flex items-center justify-between gap-4 py-0.5 text-slate-400">
+          {typeof hovered.benchVal === 'number' && (
+            <div className="flex items-center justify-between gap-4 py-0.5 text-slate-300">
               <span className="flex items-center gap-1.5 font-medium">
                 <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />
-                Nifty 50:
+                NIFTY 50 Benchmark:
               </span>
               <span className="font-mono">
                 {formatINR(hovered.benchVal)} (
-                {(((hovered.benchVal - initialCapital) / initialCapital) * 100).toFixed(1)}%)
+                {hovered.benchVal >= initialCapital ? '+' : ''}
+                {(((hovered.benchVal - initialCapital) / initialCapital) * 100).toFixed(2)}%)
               </span>
             </div>
           )}
@@ -247,18 +318,18 @@ export function WealthGrowthChart({
       <div className="flex items-center justify-center gap-6 mt-3 text-xs text-slate-600">
         {(activePortfolio === 'All' || activePortfolio === 'Portfolio A') && (
           <div className="flex items-center gap-2">
-            <span className="w-3 h-0.5 bg-orange-500 inline-block" />
+            <span className="w-3.5 h-1 bg-orange-500 rounded-full inline-block" />
             <span className="font-medium text-slate-800">Portfolio A (High Risk)</span>
           </div>
         )}
         {(activePortfolio === 'All' || activePortfolio === 'Portfolio B') && (
           <div className="flex items-center gap-2">
-            <span className="w-3 h-0.5 bg-teal-600 inline-block" />
+            <span className="w-3.5 h-1 bg-teal-600 rounded-full inline-block" />
             <span className="font-medium text-slate-800">Portfolio B (Low Risk)</span>
           </div>
         )}
         <div className="flex items-center gap-2">
-          <span className="w-3 h-0.5 bg-slate-400 border-dashed border-b border-slate-400 inline-block" />
+          <span className="w-3.5 h-0.5 bg-slate-400 border-dashed border-b border-slate-400 inline-block" />
           <span className="text-slate-500">NIFTY 50 Benchmark</span>
         </div>
       </div>
@@ -279,32 +350,44 @@ export function DrawdownChart({
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
+  const n = dates.length;
+  if (!n || seriesA.length === 0 || seriesB.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-400 text-sm">
+        No drawdown series data
+      </div>
+    );
+  }
+
   const width = 800;
   const height = 240;
-  const padLeft = 60;
-  const padRight = 20;
-  const padTop = 20;
-  const padBottom = 30;
+  const padLeft = 65;
+  const padRight = 25;
+  const padTop = 25;
+  const padBottom = 35;
 
   const chartW = width - padLeft - padRight;
   const chartH = height - padTop - padBottom;
 
   const minA = Math.min(...seriesA, 0);
   const minB = Math.min(...seriesB, 0);
-  const minVal = Math.min(minA, minB) * 1.15; // negative percentage
-  const maxVal = 0;
+  const deepest = Math.min(minA, minB);
+  // Ensure we show at least down to -30% or 15% below deepest
+  const minVal = Math.min(-25, deepest * 1.15); // negative percentage
 
-  const getX = (i: number) => padLeft + (i / (dates.length - 1)) * chartW;
+  const getX = (i: number) => padLeft + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
   const getY = (v: number) => padTop + ((0 - v) / (0 - minVal)) * chartH;
 
   const yZero = getY(0);
 
   // Area paths
-  const areaA = `M ${getX(0)} ${yZero} ` +
+  const areaA =
+    `M ${getX(0)} ${yZero} ` +
     seriesA.map((v, i) => `L ${getX(i)} ${getY(v)}`).join(' ') +
     ` L ${getX(seriesA.length - 1)} ${yZero} Z`;
 
-  const areaB = `M ${getX(0)} ${yZero} ` +
+  const areaB =
+    `M ${getX(0)} ${yZero} ` +
     seriesB.map((v, i) => `L ${getX(i)} ${getY(v)}`).join(' ') +
     ` L ${getX(seriesB.length - 1)} ${yZero} Z`;
 
@@ -313,11 +396,34 @@ export function DrawdownChart({
 
   const yTicks = [0, -10, -20, -30, -40, -50].filter((v) => v >= minVal);
 
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * width;
+    if (relX < padLeft - 10 || relX > width - padRight + 10) {
+      setHoverIndex(null);
+      return;
+    }
+    const fraction = (relX - padLeft) / chartW;
+    const clampedIndex = Math.max(0, Math.min(n - 1, Math.round(fraction * (n - 1))));
+    setHoverIndex(clampedIndex);
+  };
+
+  // Selected date labels evenly sampled to guarantee NO overlapping labels
+  const tickCount = 6;
+  const tickIndices: number[] = [];
+  if (n > 0) {
+    for (let k = 0; k < tickCount; k++) {
+      const idx = Math.round((k / (tickCount - 1)) * (n - 1));
+      if (!tickIndices.includes(idx)) tickIndices.push(idx);
+    }
+  }
+
   return (
     <div className="relative w-full">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto overflow-visible select-none"
+        className="w-full h-auto overflow-visible select-none cursor-crosshair"
+        onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
         {/* Zero baseline */}
@@ -356,68 +462,75 @@ export function DrawdownChart({
         {/* Portfolio A Area */}
         {(activePortfolio === 'All' || activePortfolio === 'Portfolio A') && (
           <>
-            <path d={areaA} fill="#f97316" fillOpacity="0.15" />
-            <path d={pathA} fill="none" stroke="#f97316" strokeWidth="2" />
+            <path d={areaA} fill="#f97316" fillOpacity="0.18" />
+            <path d={pathA} fill="none" stroke="#f97316" strokeWidth="2.2" />
           </>
         )}
 
         {/* Portfolio B Area */}
         {(activePortfolio === 'All' || activePortfolio === 'Portfolio B') && (
           <>
-            <path d={areaB} fill="#0d9488" fillOpacity="0.18" />
-            <path d={pathB} fill="none" stroke="#0d9488" strokeWidth="2" />
+            <path d={areaB} fill="#0d9488" fillOpacity="0.20" />
+            <path d={pathB} fill="none" stroke="#0d9488" strokeWidth="2.2" />
           </>
         )}
 
-        {/* Hover Crosshair */}
+        {/* Hover Crosshair & Dots */}
         {hoverIndex !== null && (
-          <line
-            x1={getX(hoverIndex)}
-            y1={padTop}
-            x2={getX(hoverIndex)}
-            y2={padTop + chartH}
-            stroke="#334155"
-            strokeWidth="1"
-            strokeDasharray="2 2"
-          />
+          <g>
+            <line
+              x1={getX(hoverIndex)}
+              y1={padTop}
+              x2={getX(hoverIndex)}
+              y2={padTop + chartH}
+              stroke="#334155"
+              strokeWidth="1.2"
+              strokeDasharray="2 2"
+            />
+            {(activePortfolio === 'All' || activePortfolio === 'Portfolio A') && seriesA[hoverIndex] !== undefined && (
+              <circle
+                cx={getX(hoverIndex)}
+                cy={getY(seriesA[hoverIndex])}
+                r={4.5}
+                fill="#f97316"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+              />
+            )}
+            {(activePortfolio === 'All' || activePortfolio === 'Portfolio B') && seriesB[hoverIndex] !== undefined && (
+              <circle
+                cx={getX(hoverIndex)}
+                cy={getY(seriesB[hoverIndex])}
+                r={4.5}
+                fill="#0d9488"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+              />
+            )}
+          </g>
         )}
 
-        {/* Hit targets */}
-        {dates.map((_, i) => (
-          <rect
-            key={i}
-            x={getX(i) - chartW / (dates.length * 2)}
-            y={padTop}
-            width={chartW / dates.length}
-            height={chartH}
-            fill="transparent"
-            onMouseEnter={() => setHoverIndex(i)}
-          />
-        ))}
-
         {/* X labels */}
-        {dates.filter((_, idx) => idx % Math.ceil(dates.length / 8) === 0 || idx === dates.length - 1).map((d) => {
-          const idx = dates.indexOf(d);
-          return (
-            <text
-              key={idx}
-              x={getX(idx)}
-              y={height - 8}
-              fontSize="10"
-              fill="#64748b"
-              textAnchor="middle"
-            >
-              {d}
-            </text>
-          );
-        })}
+        {tickIndices.map((idx) => (
+          <text
+            key={idx}
+            x={getX(idx)}
+            y={height - 10}
+            fontSize="10"
+            fill="#64748b"
+            textAnchor="middle"
+            fontFamily="monospace"
+          >
+            {dates[idx]}
+          </text>
+        ))}
       </svg>
 
       {hoverIndex !== null && dates[hoverIndex] && (
         <div
-          className="absolute z-20 pointer-events-none bg-slate-900/95 text-white px-3 py-2 rounded-lg text-xs shadow-xl border border-slate-700"
+          className="absolute z-20 pointer-events-none bg-slate-900/95 text-white px-3.5 py-2 rounded-lg text-xs shadow-xl border border-slate-700"
           style={{
-            left: `${Math.min(80, Math.max(15, (getX(hoverIndex) / width) * 100))}%`,
+            left: `${Math.min(75, Math.max(15, (getX(hoverIndex) / width) * 100))}%`,
             top: '20px',
           }}
         >
@@ -439,12 +552,12 @@ export function DrawdownChart({
 
       <div className="flex items-center justify-center gap-6 mt-2 text-xs text-slate-600">
         <div className="flex items-center gap-2">
-          <span className="w-3 h-2 bg-orange-500/25 border border-orange-500 inline-block rounded-xs" />
-          <span>Portfolio A Drawdown (Max: {minA.toFixed(1)}%)</span>
+          <span className="w-3.5 h-2 bg-orange-500/25 border border-orange-500 inline-block rounded-xs" />
+          <span>Portfolio A Peak Drawdown: {minA.toFixed(2)}%</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-3 h-2 bg-teal-500/25 border border-teal-500 inline-block rounded-xs" />
-          <span>Portfolio B Drawdown (Max: {minB.toFixed(1)}%)</span>
+          <span className="w-3.5 h-2 bg-teal-500/25 border border-teal-500 inline-block rounded-xs" />
+          <span>Portfolio B Peak Drawdown: {minB.toFixed(2)}%</span>
         </div>
       </div>
     </div>
@@ -533,7 +646,17 @@ export function ReturnHistogram({
           strokeWidth="2"
           strokeDasharray="4 2"
         />
-        <text x={varX} y={padTop + 14} fontSize="9" fill="#ef4444" fontWeight="600" textAnchor="end">
+        <text
+          x={varX < padLeft + 75 ? varX + 4 : varX - 4}
+          y={padTop + 14}
+          fontSize="9"
+          fill="#ef4444"
+          fontWeight="700"
+          textAnchor={varX < padLeft + 75 ? 'start' : 'end'}
+          paintOrder="stroke"
+          stroke="#ffffff"
+          strokeWidth="2.5"
+        >
           95% VaR: -{var95.toFixed(1)}%
         </text>
 
@@ -546,7 +669,17 @@ export function ReturnHistogram({
           stroke="#b91c1c"
           strokeWidth="2"
         />
-        <text x={esX} y={padTop + 28} fontSize="9" fill="#b91c1c" fontWeight="600" textAnchor="end">
+        <text
+          x={esX < padLeft + 75 ? esX + 4 : esX - 4}
+          y={padTop + 28}
+          fontSize="9"
+          fill="#b91c1c"
+          fontWeight="700"
+          textAnchor={esX < padLeft + 75 ? 'start' : 'end'}
+          paintOrder="stroke"
+          stroke="#ffffff"
+          strokeWidth="2.5"
+        >
           95% ES: -{es95.toFixed(1)}%
         </text>
 
@@ -880,9 +1013,12 @@ export function CorrelationHeatmap({
               {tickers.map((t, idx) => (
                 <th
                   key={idx}
-                  className="p-1 font-mono text-[10px] text-slate-600 -rotate-45 h-16 w-10 text-left align-bottom whitespace-nowrap"
+                  style={{ width: cellSize, minWidth: cellSize }}
+                  className="p-1 font-mono text-[10px] text-slate-600 h-20 align-bottom overflow-visible relative"
                 >
-                  {t.replace('.NS', '')}
+                  <div className="w-5 -rotate-45 origin-bottom-left translate-x-2.5 translate-y-[-6px] whitespace-nowrap font-medium select-none">
+                    {t.replace('.NS', '')}
+                  </div>
                 </th>
               ))}
             </tr>

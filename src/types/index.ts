@@ -11,7 +11,7 @@ export interface StockInfo {
 
 export interface MonthlyReturnRow {
   date: string; // YYYY-MM
-  [ticker: string]: number | string;
+  [ticker: string]: number | string | null | undefined;
 }
 
 export interface DailyReturnRow {

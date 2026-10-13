@@ -1,11 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { MONTHLY_RETURNS_DATA } from '../data/historicalData';
+import { MonthlyReturnRow } from '../types';
+import { REAL_YAHOO_MONTHLY_RETURNS } from '../data/realMarketData';
 import { PORTFOLIO_A_STOCKS, PORTFOLIO_B_STOCKS, ALL_UNIVERSE_STOCKS } from '../data/universe';
 import { extractReturns, calculateCorrelation, calculateCovariance } from '../utils/math';
 import { CorrelationHeatmap } from '../components/charts/Charts';
 import { Grid, Sparkles, Info, Layers } from 'lucide-react';
 
-export function CorrelationPage() {
+interface CorrelationPageProps {
+  monthlyReturns?: MonthlyReturnRow[];
+}
+
+export function CorrelationPage({ monthlyReturns = REAL_YAHOO_MONTHLY_RETURNS }: CorrelationPageProps) {
   const [activeUniverse, setActiveUniverse] = useState<'Portfolio A' | 'Portfolio B' | 'Full Universe'>('Portfolio A');
   const [metricMode, setMetricMode] = useState<'correlation' | 'covariance'>('correlation');
 
@@ -20,7 +25,7 @@ export function CorrelationPage() {
       ? tickersB
       : tickersAll;
 
-  // Compute correlation and covariance matrices
+  // Compute correlation and covariance matrices from verified returns
   const { matrix, highestPairs, lowestPairs, avgCorrelation } = useMemo(() => {
     const n = activeTickers.length;
     const mat: number[][] = [];
@@ -28,7 +33,7 @@ export function CorrelationPage() {
 
     const returnsMap: Record<string, number[]> = {};
     activeTickers.forEach((t) => {
-      returnsMap[t] = extractReturns(MONTHLY_RETURNS_DATA, t);
+      returnsMap[t] = extractReturns(monthlyReturns, t);
     });
 
     let sumOffDiag = 0;

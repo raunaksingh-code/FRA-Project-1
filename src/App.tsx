@@ -20,11 +20,13 @@ import {
   computeRolling12Metrics,
 } from './utils/math';
 import { exportFRAWorkbook } from './utils/excel';
+import { REAL_YAHOO_MONTHLY_RETURNS } from './data/realMarketData';
+import { AppDataMode } from './components/layout/Navbar';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<PageId>('summary');
-  const [dataMode, setDataMode] = useState<'preloaded' | 'custom'>('preloaded');
-  const [monthlyReturns, setMonthlyReturns] = useState<MonthlyReturnRow[]>(MONTHLY_RETURNS_DATA);
+  const [dataMode, setDataMode] = useState<AppDataMode>('real-web');
+  const [monthlyReturns, setMonthlyReturns] = useState<MonthlyReturnRow[]>(REAL_YAHOO_MONTHLY_RETURNS);
 
   // Modals
   const [isReportOpen, setIsReportOpen] = useState(false);
@@ -38,8 +40,8 @@ export default function App() {
     initialCapital: 1500000,
     rebalanceFrequency: 'Monthly',
     maxStockWeightPct: 35,
-    startDate: '2021-10',
-    endDate: '2026-09',
+    startDate: '2021-11',
+    endDate: '2026-10',
     comparableUniverseOnly: true,
   });
 
@@ -64,8 +66,8 @@ export default function App() {
       initialCapital: 1500000,
       rebalanceFrequency: 'Monthly',
       maxStockWeightPct: 35,
-      startDate: '2021-10',
-      endDate: '2026-09',
+      startDate: '2021-11',
+      endDate: '2026-10',
       comparableUniverseOnly: true,
     });
     setWeightsA(Object.fromEntries(PORTFOLIO_A_STOCKS.map((s) => [s.ticker, 10.0])));
@@ -130,7 +132,15 @@ export default function App() {
     let runningB = filters.initialCapital;
     let runningBench = filters.initialCapital;
 
-    return monthlyReturns.map((row, i) => {
+    // t=0 observation baseline
+    const basePoint = {
+      date: 'Start',
+      valA: filters.initialCapital,
+      valB: filters.initialCapital,
+      benchVal: filters.initialCapital,
+    };
+
+    const monthlyPoints = monthlyReturns.map((row, i) => {
       const retA = portfolioSeriesA[i]?.return || 0;
       const retB = portfolioSeriesB[i]?.return || 0;
       const retBench = benchmarkSeries[i]?.return || 0;
@@ -146,13 +156,15 @@ export default function App() {
         benchVal: Math.round(runningBench),
       };
     });
+
+    return [basePoint, ...monthlyPoints];
   }, [monthlyReturns, portfolioSeriesA, portfolioSeriesB, benchmarkSeries, filters.initialCapital]);
 
-  // Peak-to-Trough Drawdown Series
+  // Peak-to-Trough Drawdown Series (with 0% baseline at t=0)
   const { drawdownSeriesA, drawdownSeriesB } = useMemo(() => {
     let maxA = 1;
     let runningA = 1;
-    const ddA: number[] = [];
+    const ddA: number[] = [0];
 
     portfolioSeriesA.forEach((p) => {
       runningA *= 1 + p.return;
@@ -162,7 +174,7 @@ export default function App() {
 
     let maxB = 1;
     let runningB = 1;
-    const ddB: number[] = [];
+    const ddB: number[] = [0];
 
     portfolioSeriesB.forEach((p) => {
       runningB *= 1 + p.return;
@@ -208,12 +220,12 @@ export default function App() {
   };
 
   const handleResetToPreloaded = () => {
-    setMonthlyReturns(MONTHLY_RETURNS_DATA);
-    setDataMode('preloaded');
+    setMonthlyReturns(REAL_YAHOO_MONTHLY_RETURNS);
+    setDataMode('real-web');
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900 antialiased">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-100 font-sans text-slate-900 antialiased">
       {/* Institutional Top Navigation Header */}
       <Navbar
         dataMode={dataMode}
@@ -223,7 +235,7 @@ export default function App() {
       />
 
       {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Sidebar Navigation & Global Controls */}
         <Sidebar
           currentPage={currentPage}
@@ -234,7 +246,7 @@ export default function App() {
         />
 
         {/* Dynamic Analytics Viewport */}
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+        <main className="flex-1 h-full overflow-y-auto p-4 sm:p-6 lg:p-8 min-w-0">
           <div className="max-w-7xl mx-auto space-y-6">
             {currentPage === 'summary' && (
               <ExecutiveSummaryPage
@@ -246,6 +258,7 @@ export default function App() {
                 stockStats={stockStats}
                 filters={filters}
                 onChangeFilters={handleUpdateFilters}
+                dataMode={dataMode}
               />
             )}
 
@@ -286,11 +299,12 @@ export default function App() {
               <EfficientFrontierPage
                 filters={filters}
                 onChangeFilters={handleUpdateFilters}
+                monthlyReturns={monthlyReturns}
               />
             )}
 
             {currentPage === 'correlation' && (
-              <CorrelationPage />
+              <CorrelationPage monthlyReturns={monthlyReturns} />
             )}
 
             {currentPage === 'explorer' && (

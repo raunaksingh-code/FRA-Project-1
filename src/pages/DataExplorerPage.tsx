@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { PORTFOLIO_A_STOCKS, PORTFOLIO_B_STOCKS } from '../data/universe';
 import { parseUploadedFile, exportToCSV, exportFRAWorkbook } from '../utils/excel';
+import { AppDataMode } from '../components/layout/Navbar';
 import {
   Database,
   Upload,
@@ -17,6 +18,7 @@ import {
   RotateCcw,
   Search,
   FileCheck,
+  Globe,
 } from 'lucide-react';
 
 interface DataExplorerProps {
@@ -25,7 +27,7 @@ interface DataExplorerProps {
   metricsA: PortfolioPerformanceMetrics;
   metricsB: PortfolioPerformanceMetrics;
   stressTestResults: StressTestResult[];
-  dataMode: 'preloaded' | 'custom';
+  dataMode: AppDataMode;
   onSetCustomData: (rows: MonthlyReturnRow[]) => void;
   onResetToPreloaded: () => void;
 }
@@ -135,17 +137,19 @@ export function DataExplorerPage({
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3 h-3 text-slate-500" />
-              <span>Reset to Preloaded Colab Data</span>
+              <span>Reset to Real Web Data</span>
             </button>
           )}
           <span
             className={`text-xs px-2.5 py-1 rounded-md font-medium font-mono ${
-              dataMode === 'preloaded'
+              dataMode === 'real-web'
                 ? 'bg-emerald-100 text-emerald-800'
                 : 'bg-indigo-100 text-indigo-800'
             }`}
           >
-            {dataMode === 'preloaded' ? 'Preloaded Empirical Dataset' : 'Custom Upload Active'}
+            {dataMode === 'real-web'
+              ? 'Real Web Data (Yahoo Finance / NSE)'
+              : 'Custom Upload Active'}
           </span>
         </div>
       </div>

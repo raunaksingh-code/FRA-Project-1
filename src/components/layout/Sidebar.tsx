@@ -47,7 +47,7 @@ export function Sidebar({
   onResetFilters,
 }: SidebarProps) {
   return (
-    <aside className="w-68 bg-slate-50 border-r border-slate-200 flex flex-col justify-between shrink-0 h-[calc(100vh-4rem)] overflow-y-auto">
+    <aside className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col justify-between shrink-0 h-full overflow-y-auto">
       {/* Navigation Links */}
       <div className="p-3">
         <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">

@@ -251,73 +251,49 @@ export function StressTestingPage({ filters }: StressTestingProps) {
         </div>
 
         {/* Plotly Grouped Bar Chart */}
-        <div>
-          <PlotlyChart
-            data={[
-              {
-                x: ['Calm Period (2017–19)', 'COVID Crisis (2020)', 'Recent Sample (2021–26)'],
-                y: [
-                  activeMetricTab === 'downsideBeta'
-                    ? 1.34
-                    : activeMetricTab === 'volatility'
-                    ? 29.84
-                    : activeMetricTab === 'sortino'
-                    ? 1.48
-                    : -27.42,
-                  activeMetricTab === 'downsideBeta'
-                    ? 1.54
-                    : activeMetricTab === 'volatility'
-                    ? 56.78
-                    : activeMetricTab === 'sortino'
-                    ? -0.84
-                    : -48.16,
-                  activeMetricTab === 'downsideBeta'
-                    ? 1.48
-                    : activeMetricTab === 'volatility'
-                    ? 31.42
-                    : activeMetricTab === 'sortino'
-                    ? 1.68
-                    : -34.82,
-                ],
-                name: 'Portfolio A (High Risk)',
-                type: 'bar',
-                marker: { color: '#f97316' },
-                hovertemplate: '<b>Portfolio A</b><br>Period: %{x}<br>Value: %{y}<extra></extra>',
-              },
-              {
-                x: ['Calm Period (2017–19)', 'COVID Crisis (2020)', 'Recent Sample (2021–26)'],
-                y: [
-                  activeMetricTab === 'downsideBeta'
-                    ? 0.67
-                    : activeMetricTab === 'volatility'
-                    ? 13.42
-                    : activeMetricTab === 'sortino'
-                    ? 2.14
-                    : -11.85,
-                  activeMetricTab === 'downsideBeta'
-                    ? 0.69
-                    : activeMetricTab === 'volatility'
-                    ? 28.15
-                    : activeMetricTab === 'sortino'
-                    ? -0.38
-                    : -27.34,
-                  activeMetricTab === 'downsideBeta'
-                    ? 0.63
-                    : activeMetricTab === 'volatility'
-                    ? 12.84
-                    : activeMetricTab === 'sortino'
-                    ? 2.06
-                    : -14.28,
-                ],
-                name: 'Portfolio B (Low Risk)',
-                type: 'bar',
-                marker: { color: '#0d9488' },
-                hovertemplate: '<b>Portfolio B</b><br>Period: %{x}<br>Value: %{y}<extra></extra>',
-              },
-            ]}
-            layout={{
-              barmode: 'group',
-              height: 300,
+          {(() => {
+            const getVal = (periodKey: string, portfolio: 'Portfolio A' | 'Portfolio B') => {
+              const row = comparisonData.find(
+                (p) => p.periodKey === periodKey && p.portfolio === portfolio
+              );
+              if (!row) return 0;
+              if (activeMetricTab === 'downsideBeta') return row.downsideBeta;
+              if (activeMetricTab === 'volatility') return row.annualizedVolPct;
+              if (activeMetricTab === 'sortino') return row.sortinoRatio;
+              return row.maxDrawdownPct;
+            };
+
+            const periods = [
+              { key: 'calm', label: 'Calm Period (2017–19)' },
+              { key: 'covid', label: 'COVID Crisis (2020)' },
+              { key: 'recent', label: 'Recent Sample (2021–26)' },
+            ];
+
+            return (
+              <PlotlyChart
+                data={[
+                  {
+                    x: periods.map((p) => p.label),
+                    y: periods.map((p) => getVal(p.key, 'Portfolio A')),
+                    name: 'Portfolio A (High Risk)',
+                    type: 'bar',
+                    marker: { color: '#f97316' },
+                    hovertemplate:
+                      '<b>Portfolio A</b><br>Period: %{x}<br>Value: %{y}<extra></extra>',
+                  },
+                  {
+                    x: periods.map((p) => p.label),
+                    y: periods.map((p) => getVal(p.key, 'Portfolio B')),
+                    name: 'Portfolio B (Low Risk)',
+                    type: 'bar',
+                    marker: { color: '#0d9488' },
+                    hovertemplate:
+                      '<b>Portfolio B</b><br>Period: %{x}<br>Value: %{y}<extra></extra>',
+                  },
+                ]}
+                layout={{
+                  barmode: 'group',
+                  height: 300,
               yaxis: {
                 title: {
                   text:
@@ -336,7 +312,8 @@ export function StressTestingPage({ filters }: StressTestingProps) {
               },
             }}
           />
-        </div>
+        );
+      })()}
       </div>
 
       {/* Cross-Regime Academic Summary Insights */}
