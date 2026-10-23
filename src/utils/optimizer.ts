@@ -241,10 +241,32 @@ export function runMarkowitzOptimization(
   stockReturns: StockReturnsMap,
   rf = 0.06,
   maxCap = 1.0,
-  nSimulations = 1200
+  nSimulations = 1200,
+  customWeights?: Record<string, number>
 ): FrontierOptimizationSummary {
   const { tickers, mu, cov } = computeAnnualizedMuAndCov(stockReturns);
   const n = tickers.length;
+
+  // Custom portfolio evaluation from user weights (if provided)
+  let currentCustom: FrontierOptimizationSummary['currentCustom'] | undefined = undefined;
+  if (customWeights && Object.keys(customWeights).length > 0) {
+    const rawSum = tickers.reduce((sum, t) => sum + (customWeights[t] || 0), 0);
+    const customW = tickers.map((t) => {
+      const w = customWeights[t] || 0;
+      return rawSum > 0 ? w / rawSum : 1 / n;
+    });
+    const customEval = evaluatePortfolio(customW, mu, cov, rf);
+    const customWeightsMap: Record<string, number> = {};
+    tickers.forEach((t, i) => {
+      customWeightsMap[t] = Number((customW[i] * 100).toFixed(2));
+    });
+    currentCustom = {
+      expectedReturnPct: Number((customEval.expReturn * 100).toFixed(2)),
+      volatilityPct: Number((customEval.vol * 100).toFixed(2)),
+      sharpeRatio: Number(customEval.sharpe.toFixed(2)),
+      weights: customWeightsMap,
+    };
+  }
 
   // Equal weight benchmark
   const eqW = new Array(n).fill(1 / n);
@@ -331,6 +353,7 @@ export function runMarkowitzOptimization(
       sharpeRatio: Number(eqEval.sharpe.toFixed(2)),
       weights: eqWeightsMap,
     },
+    currentCustom,
     frontierCurve,
     feasiblePortfolios,
   };

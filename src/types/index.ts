@@ -1,12 +1,16 @@
 export interface StockInfo {
   ticker: string;
   name: string;
-  portfolio: 'Portfolio A' | 'Portfolio B';
+  portfolio: 'Portfolio A' | 'Portfolio B' | 'Financials';
   sector: string;
   description: string;
   listingDate: string;
   listedBeforeCovid: boolean;
   benchmarkBeta: number;
+  riskCategory?: 'High Risk' | 'Low Risk' | 'Moderate Risk';
+  riskRationale?: string;
+  primaryRiskDriver?: string;
+  volatilityProfile?: string;
 }
 
 export interface MonthlyReturnRow {
@@ -22,7 +26,7 @@ export interface DailyReturnRow {
 export interface StockStatistics {
   ticker: string;
   name: string;
-  portfolio: 'Portfolio A' | 'Portfolio B';
+  portfolio: 'Portfolio A' | 'Portfolio B' | 'Financials';
   sector: string;
   monthsCount: number;
   meanMonthlyReturnPct: number;
@@ -35,6 +39,8 @@ export interface StockStatistics {
   var95Pct: number;
   es95Pct: number;
   beta: number;
+  riskCategory?: 'High Risk' | 'Low Risk' | 'Moderate Risk';
+  riskRationale?: string;
 }
 
 export interface PortfolioPerformanceMetrics {
@@ -114,6 +120,12 @@ export interface FrontierOptimizationSummary {
     weights: Record<string, number>;
   };
   equalWeight: {
+    expectedReturnPct: number;
+    volatilityPct: number;
+    sharpeRatio: number;
+    weights: Record<string, number>;
+  };
+  currentCustom?: {
     expectedReturnPct: number;
     volatilityPct: number;
     sharpeRatio: number;
@@ -199,3 +211,61 @@ export interface GlobalFilterState {
   comparableUniverseOnly: boolean;
   sortinoTargetReturnPct?: number; // Target return hurdle for Sortino
 }
+
+export interface RiskDriverAttribution {
+  ticker: string;
+  name: string;
+  portfolio: string;
+  sector: string;
+  weightPct: number;
+  marginalContributionRiskPct: number; // MCR_i = (Sigma w)_i / sigma_p
+  percentageRiskContributionPct: number; // PRC_i = w_i * MCR_i / sigma_p * 100
+  annualizedVolPct: number;
+  beta: number;
+  riskCategory: 'High Risk' | 'Low Risk' | 'Moderate Risk';
+  whyRiskyOrLowRisk: string;
+}
+
+export interface CrisisStockPerformance {
+  ticker: string;
+  name: string;
+  portfolio: 'Portfolio A' | 'Portfolio B' | 'Financials';
+  returnPct: number;
+  maxDrawdownPct: number;
+  sector: string;
+}
+
+export interface CrisisEventInfo {
+  id: string;
+  name: string;
+  period: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+  marketDrawdownPct: number;
+  portfolioADrawdownPct: number;
+  portfolioBDrawdownPct: number;
+  portfolioAReturnPct: number;
+  portfolioBReturnPct: number;
+  keyCatalyst: string;
+  stockPerformances: CrisisStockPerformance[];
+}
+
+export interface DescriptiveStatistics {
+  count: number;
+  meanMonthlyReturnPct: number;
+  annualizedReturnPct: number;
+  medianMonthlyReturnPct: number;
+  modeMonthlyReturnPct: number;
+  sampleVariancePct: number;
+  annualizedVolPct: number;
+  interquartileRangePct: number;
+  skewness: number;
+  excessKurtosis: number;
+  minMonthlyReturnPct: number;
+  maxMonthlyReturnPct: number;
+  positiveMonthsPct: number;
+  jarqueBeraStatistic: number;
+  isNormalAt5Pct: boolean;
+}
+

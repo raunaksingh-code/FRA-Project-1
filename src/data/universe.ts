@@ -10,6 +10,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2018-06-18',
     listedBeforeCovid: true,
     benchmarkBeta: 1.62,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'High financial debt leverage & aggressive capital expenditure cycle.',
+    riskRationale: 'Beta of 1.62 and annualized volatility ~44%; extreme sensitivity to interest rate shifts and corporate governance headlines.',
+    volatilityProfile: 'High Volatility (~44.2% p.a.)',
   },
   {
     ticker: 'ADANIPOWER.NS',
@@ -20,6 +24,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2009-08-20',
     listedBeforeCovid: true,
     benchmarkBeta: 1.54,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Fuel supply volatility, regulatory tariff adjustments, and merchant market spreads.',
+    riskRationale: 'Beta of 1.54 with high peak-to-trough drawdowns; cyclical commodity pricing impact on operating margins.',
+    volatilityProfile: 'High Volatility (~42.8% p.a.)',
   },
   {
     ticker: 'MAZDOCK.NS',
@@ -30,6 +38,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2020-10-12',
     listedBeforeCovid: false,
     benchmarkBeta: 1.48,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Lumpy order execution, defense budget disbursements, and long working capital cycle.',
+    riskRationale: 'Beta of 1.48; massive multi-year momentum followed by sharp institutional profit-taking pullbacks.',
+    volatilityProfile: 'High Volatility (~41.5% p.a.)',
   },
   {
     ticker: 'DLF.NS',
@@ -40,6 +52,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2007-07-05',
     listedBeforeCovid: true,
     benchmarkBeta: 1.35,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Macro interest rate cycles, housing credit liquidity, and regulatory project approvals.',
+    riskRationale: 'Beta of 1.35; highly cyclical demand elasticity where rate tightening dampens pre-sales growth.',
+    volatilityProfile: 'Moderate-High Volatility (~34.8% p.a.)',
   },
   {
     ticker: 'DIXON.NS',
@@ -50,6 +66,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2017-09-18',
     listedBeforeCovid: true,
     benchmarkBeta: 1.41,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Thin contract manufacturing EBITDA margins (3.5–5%) and supply chain component shortages.',
+    riskRationale: 'Beta of 1.41; high valuation multiple leaves zero cushion for quarterly volume misses.',
+    volatilityProfile: 'High Volatility (~38.6% p.a.)',
   },
   {
     ticker: 'BSE.NS',
@@ -60,6 +80,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2017-02-03',
     listedBeforeCovid: true,
     benchmarkBeta: 1.45,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Extreme pro-cyclicality to equity market trading volumes and F&O derivatives turnover.',
+    riskRationale: 'Beta of 1.45; revenue collapses when market sentiment turns bearish and transaction velocity dries up.',
+    volatilityProfile: 'High Volatility (~46.1% p.a.)',
   },
   {
     ticker: 'TRENT.NS',
@@ -70,6 +94,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2004-03-24',
     listedBeforeCovid: true,
     benchmarkBeta: 1.28,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'High lease liabilities, fast-fashion inventory turnover risk, and consumer discretionary softness.',
+    riskRationale: 'Beta of 1.28; high trailing P/E multiple implies severe re-rating risk upon single-digit SSSG deceleration.',
+    volatilityProfile: 'Moderate-High Volatility (~32.4% p.a.)',
   },
   {
     ticker: 'BAJFINANCE.NS',
@@ -80,6 +108,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2002-07-01',
     listedBeforeCovid: true,
     benchmarkBeta: 1.32,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Wholesale borrowing cost spikes, unsecured retail loan delinquency cycles, and RBI provisioning norms.',
+    riskRationale: 'Beta of 1.32; financial leverage amplifies loan losses during economic slowdowns.',
+    volatilityProfile: 'Moderate-High Volatility (~31.7% p.a.)',
   },
   {
     ticker: 'PAYTM.NS',
@@ -90,6 +122,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2021-11-18',
     listedBeforeCovid: false,
     benchmarkBeta: 1.68,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Severe regulatory directives (RBI payments bank embargo), high cash burn, and negative past operating cash flows.',
+    riskRationale: 'Beta of 1.68; highest downside volatility in universe with maximum historical drawdown exceeding -70%.',
+    volatilityProfile: 'Extreme Volatility (~56.3% p.a.)',
   },
   {
     ticker: 'ZOMATO.NS',
@@ -100,6 +136,10 @@ export const PORTFOLIO_A_STOCKS: StockInfo[] = [
     listingDate: '2021-07-23',
     listedBeforeCovid: false,
     benchmarkBeta: 1.55,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Intense quick-commerce dark-store capex battles, delivery partner wage inflation, and multiple compression.',
+    riskRationale: 'Beta of 1.55; high sensitivity to global tech valuation benchmarks and liquidity conditions.',
+    volatilityProfile: 'Extreme Volatility (~48.9% p.a.)',
   },
 ];
 
@@ -113,6 +153,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1995-11-29',
     listedBeforeCovid: true,
     benchmarkBeta: 0.58,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Defensive consumer staples; non-elastic daily household demand and virtually debt-free balance sheet.',
+    riskRationale: 'Ultra-low beta of 0.58; generates robust free cash flow and insulates capital during market sell-offs.',
+    volatilityProfile: 'Low Volatility (~16.2% p.a.)',
   },
   {
     ticker: 'ITC.NS',
@@ -123,6 +167,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1995-11-03',
     listedBeforeCovid: true,
     benchmarkBeta: 0.62,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'High cash flow generation from legal cigarette franchise, hefty 3-4% dividend yield, net cash balance sheet.',
+    riskRationale: 'Beta of 0.62; acts as a natural capital hedge against inflation and monetary tightening shocks.',
+    volatilityProfile: 'Low Volatility (~18.4% p.a.)',
   },
   {
     ticker: 'TCS.NS',
@@ -133,6 +181,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '2004-08-25',
     listedBeforeCovid: true,
     benchmarkBeta: 0.69,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Multi-year recurring Fortune 500 digital transformation contracts and fortress balance sheet with >25% EBIT margin.',
+    riskRationale: 'Beta of 0.69; stable USD revenues provide INR depreciation hedge for domestic investors.',
+    volatilityProfile: 'Low-to-Moderate Volatility (~19.1% p.a.)',
   },
   {
     ticker: 'INFY.NS',
@@ -143,6 +195,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1995-02-08',
     listedBeforeCovid: true,
     benchmarkBeta: 0.74,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Disciplined corporate governance, high dividend payout ratio (>85%), and robust global enterprise billing.',
+    riskRationale: 'Beta of 0.74; modest downside variance during domestic macro stress.',
+    volatilityProfile: 'Moderate Volatility (~21.0% p.a.)',
   },
   {
     ticker: 'HDFCBANK.NS',
@@ -153,6 +209,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1996-05-19',
     listedBeforeCovid: true,
     benchmarkBeta: 0.88,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Deep low-cost CASA deposit franchise, superior credit underwriting discipline, and massive capital buffers.',
+    riskRationale: 'Beta of 0.88; while banks have systemic market exposure, HDFC Bank consistently exhibits lowest gross NPAs (~1.2%).',
+    volatilityProfile: 'Low-to-Moderate Volatility (~19.8% p.a.)',
   },
   {
     ticker: 'ICICIBANK.NS',
@@ -163,6 +223,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1998-09-22',
     listedBeforeCovid: true,
     benchmarkBeta: 0.95,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Industry-leading ROA (>2.2%), CET-1 ratio exceeding 16%, and granular corporate/retail loan diversification.',
+    riskRationale: 'Beta of 0.95; slightly higher market correlation than FMCG but provides low-risk banking sector ballast.',
+    volatilityProfile: 'Moderate Volatility (~22.4% p.a.)',
   },
   {
     ticker: 'SUNPHARMA.NS',
@@ -173,6 +237,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1995-02-08',
     listedBeforeCovid: true,
     benchmarkBeta: 0.65,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Inelastic global healthcare demand, growing global specialty portfolio, and net cash balance sheet.',
+    riskRationale: 'Beta of 0.65; medical and healthcare expenditures do not contract during macroeconomic recessions.',
+    volatilityProfile: 'Low Volatility (~17.9% p.a.)',
   },
   {
     ticker: 'NESTLEIND.NS',
@@ -183,6 +251,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '1995-02-08',
     listedBeforeCovid: true,
     benchmarkBeta: 0.52,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Monopolistic brand equity in infant nutrition and instant foods (Maggi), negative working capital cycle.',
+    riskRationale: 'Lowest beta in the universe at 0.52; maximum historical drawdown during major market corrections is less than half the index.',
+    volatilityProfile: 'Low Volatility (~15.8% p.a.)',
   },
   {
     ticker: 'POWERGRID.NS',
@@ -193,6 +265,10 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '2007-10-05',
     listedBeforeCovid: true,
     benchmarkBeta: 0.64,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'CERC regulated cost-plus business model guaranteeing ~15.5% post-tax return on equity on capitalized assets.',
+    riskRationale: 'Beta of 0.64; immune to fuel supply risk or merchant electricity pricing swings; dependable 4.5% dividend yield.',
+    volatilityProfile: 'Low Volatility (~16.9% p.a.)',
   },
   {
     ticker: 'NTPC.NS',
@@ -203,6 +279,97 @@ export const PORTFOLIO_B_STOCKS: StockInfo[] = [
     listingDate: '2004-11-05',
     listedBeforeCovid: true,
     benchmarkBeta: 0.78,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Long-term 25-year PPAs with state discoms containing guaranteed capacity charge recovery.',
+    riskRationale: 'Beta of 0.78; sovereign ownership and essential base-load power status virtually eliminate default risk.',
+    volatilityProfile: 'Low-to-Moderate Volatility (~20.5% p.a.)',
+  },
+];
+
+export const FINANCIAL_SECTOR_STOCKS: StockInfo[] = [
+  {
+    ticker: 'HDFCBANK.NS',
+    name: 'HDFC Bank',
+    portfolio: 'Financials',
+    sector: 'Private Sector Banking',
+    description: 'Premier private commercial lender with massive retail deposit franchise and lowest gross NPAs.',
+    listingDate: '1996-05-19',
+    listedBeforeCovid: true,
+    benchmarkBeta: 0.88,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Deposit franchise depth, pristine underwriting, low historical volatility.',
+    riskRationale: 'Defensive private banking benchmark with low beta (0.88).',
+    volatilityProfile: 'Low-to-Moderate (~19.8% p.a.)',
+  },
+  {
+    ticker: 'ICICIBANK.NS',
+    name: 'ICICI Bank',
+    portfolio: 'Financials',
+    sector: 'Private Sector Banking',
+    description: 'High-performing commercial bank with best-in-class return on assets (ROA > 2.2%) and digital underwriting.',
+    listingDate: '1998-09-22',
+    listedBeforeCovid: true,
+    benchmarkBeta: 0.95,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Strong NIM defense, low credit loss provisions, solid Tier-1 capital ratio.',
+    riskRationale: 'Industry standard private lender with stable risk metrics (0.95 beta).',
+    volatilityProfile: 'Moderate (~22.4% p.a.)',
+  },
+  {
+    ticker: 'SBIN.NS',
+    name: 'State Bank of India',
+    portfolio: 'Financials',
+    sector: 'Public Sector Banking (PSU)',
+    description: 'India largest commercial bank holding ~23% banking system asset share; sovereign-backed deposit base.',
+    listingDate: '1995-02-08',
+    listedBeforeCovid: true,
+    benchmarkBeta: 1.15,
+    riskCategory: 'Moderate Risk',
+    primaryRiskDriver: 'High corporate loan exposure, government priority lending mandates, and cyclical infra NPA cycles.',
+    riskRationale: 'Higher beta (1.15) and volatility (~29% p.a.) than private peers due to PSU systemic exposure.',
+    volatilityProfile: 'Moderate-High (~29.2% p.a.)',
+  },
+  {
+    ticker: 'KOTAKBANK.NS',
+    name: 'Kotak Mahindra Bank',
+    portfolio: 'Financials',
+    sector: 'Private Sector Banking',
+    description: 'High-capital-adequacy private lender known for ultra-conservative risk underwriting and affluent wealth franchise.',
+    listingDate: '1995-12-15',
+    listedBeforeCovid: true,
+    benchmarkBeta: 0.85,
+    riskCategory: 'Low Risk',
+    primaryRiskDriver: 'Exceptional CAR (~20%), high CASA ratio, conservative lending culture.',
+    riskRationale: 'Low beta (0.85); defensive balance sheet designed for capital preservation.',
+    volatilityProfile: 'Low-to-Moderate (~20.1% p.a.)',
+  },
+  {
+    ticker: 'AXISBANK.NS',
+    name: 'Axis Bank',
+    portfolio: 'Financials',
+    sector: 'Private Sector Banking',
+    description: 'Third-largest private lender transformed through retail expansion and Citibank India consumer acquisition.',
+    listingDate: '1998-11-20',
+    listedBeforeCovid: true,
+    benchmarkBeta: 1.08,
+    riskCategory: 'Moderate Risk',
+    primaryRiskDriver: 'Credit card portfolio growth, integration synergies, and moderate market correlation.',
+    riskRationale: 'Beta of 1.08; slightly more cyclical sensitivity than HDFC/Kotak.',
+    volatilityProfile: 'Moderate (~26.5% p.a.)',
+  },
+  {
+    ticker: 'BAJFINANCE.NS',
+    name: 'Bajaj Finance',
+    portfolio: 'Financials',
+    sector: 'Non-Banking Financial (NBFC)',
+    description: 'Leading retail and consumer NBFC with high operating leverage and digital lending distribution.',
+    listingDate: '2002-07-01',
+    listedBeforeCovid: true,
+    benchmarkBeta: 1.32,
+    riskCategory: 'High Risk',
+    primaryRiskDriver: 'Unsecured consumer credit risk, wholesale borrowing interest rate sensitivity, regulatory caps on fees.',
+    riskRationale: 'High beta (1.32) and volatility (~31.7% p.a.); retail loan defaults surge during consumer stress.',
+    volatilityProfile: 'Moderate-High (~31.7% p.a.)',
   },
 ];
 
@@ -212,5 +379,74 @@ export const ALL_UNIVERSE_STOCKS: StockInfo[] = [
 ];
 
 export const TICKER_TO_STOCK: Record<string, StockInfo> = Object.fromEntries(
-  ALL_UNIVERSE_STOCKS.map((s) => [s.ticker, s])
+  [...ALL_UNIVERSE_STOCKS, ...FINANCIAL_SECTOR_STOCKS].map((s) => [s.ticker, s])
 );
+
+/**
+ * Institutional Risk Selection & Governance Rationale
+ * Explains why Beta, Volatility, and Covariance are the foundational risk primitives
+ * and why accounting ratios (P/E, P/B) or single-tail VaR alone are not used.
+ */
+export const RISK_METHODOLOGY_JUSTIFICATIONS = {
+  whySelectedParameters: [
+    {
+      parameter: 'Systematic Beta (β & β⁻)',
+      role: 'Non-Diversifiable Market Sensitivity',
+      rationale:
+        'In Modern Portfolio Theory (Markowitz, 1952) and the Capital Asset Pricing Model (Sharpe, 1964), systematic beta measures an asset covariance with the aggregate market portfolio relative to market variance. Diversification cannot eliminate systematic beta. Downside Beta (β⁻) isolates this sensitivity exclusively on negative return market days, unmasking asymmetric downside exposure that standard beta conceals.',
+    },
+    {
+      parameter: 'Annualized Volatility (σ) & Covariance (Σ)',
+      role: 'Dispersion of Future Returns & Diversification Benefit',
+      rationale:
+        'Portfolio variance is governed by the full covariance matrix (w^T Σ w). Two volatile assets with low or negative correlation combine to create a portfolio with lower overall volatility than either constituent. Volatility represents the total dispersion of realized outcomes.',
+    },
+    {
+      parameter: 'Historical Maximum Drawdown (MDD)',
+      role: 'Peak-to-Trough Capital Impairment',
+      rationale:
+        'Measures the worst cumulative drop an investor suffered before recovering. Unlike symmetric standard deviation, Drawdown captures tail liquidation stress and recovery duration.',
+    },
+    {
+      parameter: 'Marginal & Percentage Risk Contribution (MCR & PRC)',
+      role: 'Portfolio Risk Driver Attribution',
+      rationale:
+        'Calculated as PRC_i = [w_i * (Σ w)_i] / σ_p^2 * 100%. This proves which individual stocks actually generate the portfolio total volatility, revealing when a single high-beta stock drives 25%+ of total risk despite only having a 10% capital weight.',
+    },
+  ],
+  whyOtherParametersExcluded: [
+    {
+      parameter: 'Price-to-Earnings (P/E) & Price-to-Book (P/B)',
+      whyExcluded:
+        'P/E and P/B are static accounting valuation multiples, not dynamic price risk measures. A low P/E stock is often a "value trap" undergoing structural earnings decay, suffering catastrophic drawdowns during credit crunches. Conversely, premier low-risk consumer staples (e.g. HUL, Nestlé) trade at premium P/E multiples (>50x) precisely because their price volatility and downside beta are extraordinarily low.',
+    },
+    {
+      parameter: 'Single-Tail Historical Value-at-Risk (VaR) Alone',
+      whyExcluded:
+        'VaR only identifies the minimum loss threshold at a chosen quantile (e.g. 95%), but is mathematically blind to the severity of tail losses beyond that threshold (fat tails / kurtosis). Furthermore, single-asset VaR is not sub-additive. We therefore supplement VaR with Expected Shortfall (CVaR) and the full Markowitz covariance structure.',
+    },
+    {
+      parameter: 'Dividend Yield Alone',
+      whyExcluded:
+        'High dividend yields often signal distressed equity prices rather than defensive safety. Without low revenue cyclicality and low beta, high dividend stocks can experience capital losses far exceeding annual payouts.',
+    },
+  ],
+  whyLowRiskStocksAreClassifiedLowRisk: [
+    {
+      category: 'Inelastic Consumer Demand',
+      description: 'FMCG and Healthcare (HUL, Nestlé, Sun Pharma) supply non-discretionary daily consumables. Households buy food, soap, and medicines regardless of GDP contractions or interest rate spikes.',
+    },
+    {
+      category: 'Regulated Utilities & Cost-Plus Tariffs',
+      description: 'Power Grid and NTPC operate under Central Electricity Regulatory Commission (CERC) contracts guaranteeing a 15.5% post-tax return on equity on capitalized transmission/generation assets.',
+    },
+    {
+      category: 'Fortress Balance Sheets & Net Cash',
+      description: 'Companies in Portfolio B maintain near-zero net debt or net cash positions, insulating them from RBI policy rate tightening and refinancing freezes.',
+    },
+    {
+      category: 'Systemic Quality & Capital Adequacy in Banking',
+      description: 'HDFC Bank and ICICI Bank possess massive low-cost CASA deposit bases, Tier-1 capital ratios above 16%, and gross NPA ratios below 1.5%, giving them low credit loss risk.',
+    },
+  ],
+};

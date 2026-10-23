@@ -1,4 +1,10 @@
-import { MonthlyReturnRow, StockStatistics, PortfolioPerformanceMetrics } from '../types';
+import {
+  MonthlyReturnRow,
+  StockStatistics,
+  PortfolioPerformanceMetrics,
+  RiskDriverAttribution,
+  DescriptiveStatistics,
+} from '../types';
 import { TICKER_TO_STOCK } from '../data/universe';
 
 /**
@@ -650,3 +656,159 @@ export function generateEvidenceBasedConclusion(params: {
     methodologicalLimitations,
   };
 }
+
+/**
+ * Computes comprehensive descriptive statistics including mean, median, mode, IQR,
+ * skewness, excess kurtosis, and Jarque-Bera normality test statistic.
+ */
+export function computeDescriptiveStatistics(returns: number[]): DescriptiveStatistics {
+  const n = returns.length;
+  if (n === 0) {
+    return {
+      count: 0,
+      meanMonthlyReturnPct: 0,
+      annualizedReturnPct: 0,
+      medianMonthlyReturnPct: 0,
+      modeMonthlyReturnPct: 0,
+      sampleVariancePct: 0,
+      annualizedVolPct: 0,
+      interquartileRangePct: 0,
+      skewness: 0,
+      excessKurtosis: 0,
+      minMonthlyReturnPct: 0,
+      maxMonthlyReturnPct: 0,
+      positiveMonthsPct: 0,
+      jarqueBeraStatistic: 0,
+      isNormalAt5Pct: false,
+    };
+  }
+
+  const sorted = [...returns].sort((a, b) => a - b);
+  const mean = calculateMean(returns);
+  const std = calculateStd(returns);
+  const median = calculateQuantile(returns, 0.5);
+  const q25 = calculateQuantile(returns, 0.25);
+  const q75 = calculateQuantile(returns, 0.75);
+  const iqr = q75 - q25;
+
+  // Approximate mode using 12 histogram bins across empirical range
+  const minVal = sorted[0];
+  const maxVal = sorted[sorted.length - 1];
+  const range = maxVal - minVal;
+  let mode = median;
+  if (range > 0) {
+    const numBins = 12;
+    const binWidth = range / numBins;
+    const binCounts = new Array(numBins).fill(0);
+    returns.forEach((r) => {
+      const bIdx = Math.min(numBins - 1, Math.floor((r - minVal) / binWidth));
+      binCounts[bIdx]++;
+    });
+    let maxBinIdx = 0;
+    for (let i = 1; i < numBins; i++) {
+      if (binCounts[i] > binCounts[maxBinIdx]) {
+        maxBinIdx = i;
+      }
+    }
+    mode = minVal + (maxBinIdx + 0.5) * binWidth;
+  }
+
+  const skew = calculateSkewness(returns);
+  const kurt = calculateKurtosis(returns);
+  const variance = Math.pow(std, 2);
+
+  // Jarque-Bera test for normality: JB = (n/6) * (S^2 + (K^2)/4)
+  // Under H0 (normal distribution), JB follows Chi-square with 2 df; critical value at alpha=0.05 is 5.991
+  const jb = (n / 6) * (Math.pow(skew, 2) + Math.pow(kurt, 2) / 4);
+  const isNormal = jb < 5.991;
+
+  const positiveCount = returns.filter((r) => r > 0).length;
+
+  return {
+    count: n,
+    meanMonthlyReturnPct: Number((mean * 100).toFixed(2)),
+    annualizedReturnPct: Number((mean * 12 * 100).toFixed(2)),
+    medianMonthlyReturnPct: Number((median * 100).toFixed(2)),
+    modeMonthlyReturnPct: Number((mode * 100).toFixed(2)),
+    sampleVariancePct: Number((variance * 10000).toFixed(2)), // in bps / %^2
+    annualizedVolPct: Number((std * Math.sqrt(12) * 100).toFixed(2)),
+    interquartileRangePct: Number((iqr * 100).toFixed(2)),
+    skewness: Number(skew.toFixed(3)),
+    excessKurtosis: Number(kurt.toFixed(3)),
+    minMonthlyReturnPct: Number((minVal * 100).toFixed(2)),
+    maxMonthlyReturnPct: Number((maxVal * 100).toFixed(2)),
+    positiveMonthsPct: Number(((positiveCount / n) * 100).toFixed(1)),
+    jarqueBeraStatistic: Number(jb.toFixed(2)),
+    isNormalAt5Pct: isNormal,
+  };
+}
+
+/**
+ * Calculates Marginal Contribution to Risk (MCR) and Percentage Risk Contribution (PRC)
+ * for each stock given portfolio weights and return series map.
+ * MCR_i = (Sigma * w)_i / sigma_p
+ * PRC_i = [w_i * (Sigma * w)_i] / (sigma_p^2) * 100%
+ */
+export function computeRiskDriverAttributions(
+  weightsMap: Record<string, number>,
+  stockReturnsMap: Record<string, number[]>,
+  portfolioBeta: number
+): RiskDriverAttribution[] {
+  const tickers = Object.keys(stockReturnsMap);
+  const n = tickers.length;
+  if (n === 0) return [];
+
+  // Normalize weights
+  const rawSum = tickers.reduce((sum, t) => sum + (weightsMap[t] || 0), 0);
+  const w = tickers.map((t) => (rawSum > 0 ? (weightsMap[t] || 0) / rawSum : 1 / n));
+
+  // Compute annualized covariance matrix
+  const cov: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    cov[i] = [];
+    for (let j = 0; j < n; j++) {
+      cov[i][j] = calculateCovariance(stockReturnsMap[tickers[i]], stockReturnsMap[tickers[j]]) * 12;
+    }
+  }
+
+  // Sigma * w
+  const sigmaW: number[] = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      sigmaW[i] += cov[i][j] * w[j];
+    }
+  }
+
+  // Portfolio variance and volatility
+  let portfolioVariance = 0;
+  for (let i = 0; i < n; i++) {
+    portfolioVariance += w[i] * sigmaW[i];
+  }
+  const portfolioVol = Math.sqrt(Math.max(1e-8, portfolioVariance));
+
+  // Calculate MCR and PRC
+  const drivers: RiskDriverAttribution[] = tickers.map((ticker, i) => {
+    const stockInfo = TICKER_TO_STOCK[ticker];
+    const std = calculateStd(stockReturnsMap[ticker]) * Math.sqrt(12);
+    const mcr = portfolioVol > 0 ? sigmaW[i] / portfolioVol : 0;
+    const prc = portfolioVariance > 0 ? ((w[i] * sigmaW[i]) / portfolioVariance) * 100 : 0;
+
+    return {
+      ticker,
+      name: stockInfo?.name || ticker,
+      portfolio: stockInfo?.portfolio || 'Custom',
+      sector: stockInfo?.sector || 'General',
+      weightPct: Number((w[i] * 100).toFixed(1)),
+      marginalContributionRiskPct: Number((mcr * 100).toFixed(2)),
+      percentageRiskContributionPct: Number(prc.toFixed(1)),
+      annualizedVolPct: Number((std * 100).toFixed(1)),
+      beta: stockInfo?.benchmarkBeta || 1.0,
+      riskCategory: stockInfo?.riskCategory || (std > 0.3 ? 'High Risk' : 'Low Risk'),
+      whyRiskyOrLowRisk: stockInfo?.riskRationale || `${stockInfo?.sector} sensitivity and historical volatility.`,
+    };
+  });
+
+  // Sort descending by risk contribution
+  return drivers.sort((a, b) => b.percentageRiskContributionPct - a.percentageRiskContributionPct);
+}
+

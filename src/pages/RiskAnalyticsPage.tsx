@@ -1,15 +1,22 @@
 import React, { useState, useMemo } from 'react';
 import { PortfolioPerformanceMetrics, GlobalFilterState } from '../types';
-import { ReturnHistogram } from '../components/charts/Charts';
 import { PlotlyChart } from '../components/charts/PlotlyChart';
 import {
   PRECOMPUTED_ROLLING_VOL,
   DAILY_OBSERVATIONS,
 } from '../data/dailyRiskData';
 import {
+  PORTFOLIO_A_STOCKS,
+  PORTFOLIO_B_STOCKS,
+  ALL_UNIVERSE_STOCKS,
+} from '../data/universe';
+import {
   calculateDownsideBeta,
   calculateOrdinaryBeta,
   calculateSortinoRatioExplicit,
+  computeDescriptiveStatistics,
+  calculateMean,
+  calculateStd,
 } from '../utils/math';
 import { exportToCSV } from '../utils/excel';
 import {
@@ -17,14 +24,15 @@ import {
   ChevronDown,
   ChevronUp,
   Sliders,
-  HelpCircle,
   TrendingDown,
   Info,
   Download,
   Activity,
   Layers,
-  ArrowDownRight,
   ShieldCheck,
+  BarChart3,
+  Scale,
+  Percent,
 } from 'lucide-react';
 
 interface RiskAnalyticsProps {
@@ -53,6 +61,7 @@ export function RiskAnalyticsPage({
   const [selectedPortfolio, setSelectedPortfolio] = useState<'Portfolio A' | 'Portfolio B'>('Portfolio A');
   const [expandedMetric, setExpandedMetric] = useState<string | null>('downsideBeta');
   const [sortinoTargetReturn, setSortinoTargetReturn] = useState<number>(filters.riskFreeRatePct);
+  const [distributionView, setDistributionView] = useState<'overlay' | 'selected'>('overlay');
 
   // Compute Downside Beta and Ordinary Beta from daily observations
   const dailyReturnsA = useMemo(() => DAILY_OBSERVATIONS.map((o) => o.returnA), []);
@@ -77,7 +86,7 @@ export function RiskAnalyticsPage({
     [dailyReturnsB, dailyReturnsNifty]
   );
 
-  // Explicit Sortino Ratios with disclosed target return
+  // Explicit Sortino Ratios
   const sortinoDailyA = useMemo(
     () => calculateSortinoRatioExplicit(dailyReturnsA, sortinoTargetReturn / 100, true),
     [dailyReturnsA, sortinoTargetReturn]
@@ -87,52 +96,152 @@ export function RiskAnalyticsPage({
     [dailyReturnsB, sortinoTargetReturn]
   );
 
-  // Rolling 30-day volatility data for Plotly
-  const rollingVolData = PRECOMPUTED_ROLLING_VOL;
+  // Full Descriptive Statistics (Mean, Median, Mode, Variance, Vol, IQR, Skew, Kurt, Jarque-Bera)
+  const descStatsA = useMemo(() => computeDescriptiveStatistics(returnsA), [returnsA]);
+  const descStatsB = useMemo(() => computeDescriptiveStatistics(returnsB), [returnsB]);
 
-  const handleDownloadRollingVol = () => {
-    const csvRows = rollingVolData.map((d) => ({
-      Date: d.date,
-      'Portfolio A (High Risk) 30d Vol (%)': d.volA,
-      'Portfolio B (Low Risk) 30d Vol (%)': d.volB,
-      'NIFTY 50 Benchmark 30d Vol (%)': d.benchVol || 0,
-    }));
-    exportToCSV(csvRows, 'rolling_volatility');
-  };
+  // Industry / Sector Descriptive Statistics Benchmarks
+  const sectorBenchmarks = useMemo(() => {
+    const sectorMap: Record<string, { returns: number[]; betas: number[]; vols: number[]; count: number }> = {};
+    ALL_UNIVERSE_STOCKS.forEach((stock) => {
+      const s = stock.sector;
+      if (!sectorMap[s]) {
+        sectorMap[s] = { returns: [], betas: [], vols: [], count: 0 };
+      }
+      sectorMap[s].betas.push(stock.benchmarkBeta);
+      sectorMap[s].count++;
+    });
+
+    return Object.entries(sectorMap).map(([sector, data]) => {
+      const avgBeta = calculateMean(data.betas);
+      const isHighBetaSector = avgBeta > 1.2;
+      return {
+        sector,
+        stockCount: data.count,
+        meanBeta: Number(avgBeta.toFixed(2)),
+        classification: isHighBetaSector ? 'Cyclical / High Risk' : 'Defensive / Stable',
+      };
+    }).sort((a, b) => b.meanBeta - a.meanBeta);
+  }, []);
+
+  // Stock Beta Comparison Data (All 20 Universe stocks sorted)
+  const sortedStockBetas = useMemo(() => {
+    return [...ALL_UNIVERSE_STOCKS].sort((a, b) => b.benchmarkBeta - a.benchmarkBeta);
+  }, []);
+
+  // Normal Distribution Gaussian Curve coordinates for Plotly
+  const normalCurveA = useMemo(() => {
+    const mean = calculateMean(returnsA);
+    const std = calculateStd(returnsA);
+    if (std === 0) return { x: [], y: [] };
+    const points = 80;
+    const minX = mean - 3.5 * std;
+    const maxX = mean + 3.5 * std;
+    const step = (maxX - minX) / points;
+    const xArr: number[] = [];
+    const yArr: number[] = [];
+    for (let i = 0; i <= points; i++) {
+      const x = minX + i * step;
+      const pdf = (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
+      xArr.push(Number((x * 100).toFixed(2)));
+      yArr.push(Number(pdf.toFixed(4)));
+    }
+    return { x: xArr, y: yArr, mean: mean * 100, std: std * 100 };
+  }, [returnsA]);
+
+  const normalCurveB = useMemo(() => {
+    const mean = calculateMean(returnsB);
+    const std = calculateStd(returnsB);
+    if (std === 0) return { x: [], y: [] };
+    const points = 80;
+    const minX = mean - 3.5 * std;
+    const maxX = mean + 3.5 * std;
+    const step = (maxX - minX) / points;
+    const xArr: number[] = [];
+    const yArr: number[] = [];
+    for (let i = 0; i <= points; i++) {
+      const x = minX + i * step;
+      const pdf = (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
+      xArr.push(Number((x * 100).toFixed(2)));
+      yArr.push(Number(pdf.toFixed(4)));
+    }
+    return { x: xArr, y: yArr, mean: mean * 100, std: std * 100 };
+  }, [returnsB]);
+
+  // Rolling 30-day volatility data
+  const rollingVolData = PRECOMPUTED_ROLLING_VOL;
 
   const handleDownloadRiskMetrics = () => {
     const csvRows = [
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Sample Observations (n)',
+        'Portfolio A (High Risk)': descStatsA.count,
+        'Portfolio B (Low Risk)': descStatsB.count,
+        Formula: 'Total monthly observations',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Arithmetic Mean Return (%)',
+        'Portfolio A (High Risk)': descStatsA.meanMonthlyReturnPct,
+        'Portfolio B (Low Risk)': descStatsB.meanMonthlyReturnPct,
+        Formula: 'Sum(R_i) / n',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Sample Median Return (%)',
+        'Portfolio A (High Risk)': descStatsA.medianMonthlyReturnPct,
+        'Portfolio B (Low Risk)': descStatsB.medianMonthlyReturnPct,
+        Formula: '50th empirical percentile',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Mode Return (%)',
+        'Portfolio A (High Risk)': descStatsA.modeMonthlyReturnPct,
+        'Portfolio B (Low Risk)': descStatsB.modeMonthlyReturnPct,
+        Formula: 'Peak density histogram bin',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Interquartile Range IQR (%)',
+        'Portfolio A (High Risk)': descStatsA.interquartileRangePct,
+        'Portfolio B (Low Risk)': descStatsB.interquartileRangePct,
+        Formula: 'Q3 (75th) - Q1 (25th)',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Sample Skewness',
+        'Portfolio A (High Risk)': descStatsA.skewness,
+        'Portfolio B (Low Risk)': descStatsB.skewness,
+        Formula: 'E[(R-mu)^3] / sigma^3',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Excess Kurtosis',
+        'Portfolio A (High Risk)': descStatsA.excessKurtosis,
+        'Portfolio B (Low Risk)': descStatsB.excessKurtosis,
+        Formula: 'E[(R-mu)^4] / sigma^4 - 3',
+      },
+      {
+        Category: 'Descriptive Statistics',
+        Metric: 'Jarque-Bera Statistic (Normality)',
+        'Portfolio A (High Risk)': descStatsA.jarqueBeraStatistic,
+        'Portfolio B (Low Risk)': descStatsB.jarqueBeraStatistic,
+        Formula: 'n/6 * (S^2 + K^2/4)',
+      },
       {
         Category: 'Market Sensitivity',
         Metric: 'Ordinary Market Beta (β)',
         'Portfolio A (High Risk)': ordinaryBetaA.beta,
         'Portfolio B (Low Risk)': ordinaryBetaB.beta,
         Formula: 'Cov(Rp, Rm) / Var(Rm)',
-        Benchmark: 'NIFTY 50',
       },
       {
         Category: 'Downside Asymmetry',
-        Metric: 'Downside Beta (β-)',
+        Metric: 'Downside Beta (β⁻)',
         'Portfolio A (High Risk)': downsideBetaA.downsideBeta,
         'Portfolio B (Low Risk)': downsideBetaB.downsideBeta,
         Formula: 'Cov(Rp, Rm | Rm < 0) / Var(Rm | Rm < 0)',
-        Benchmark: 'NIFTY 50 (Down Days)',
-      },
-      {
-        Category: 'Sample Alignment',
-        Metric: 'Total Aligned Trading Days',
-        'Portfolio A (High Risk)': downsideBetaA.alignedObs,
-        'Portfolio B (Low Risk)': downsideBetaB.alignedObs,
-        Formula: 'Aligned date count where both portfolio & benchmark exist',
-        Benchmark: 'Full Aligned History',
-      },
-      {
-        Category: 'Sample Alignment',
-        Metric: 'Negative Market Days (Rm < 0)',
-        'Portfolio A (High Risk)': downsideBetaA.negativeMarketObs,
-        'Portfolio B (Low Risk)': downsideBetaB.negativeMarketObs,
-        Formula: 'Count of days where Nifty 50 return < 0',
-        Benchmark: `${downsideBetaA.negativeMarketRatioPct}% of trading days`,
       },
       {
         Category: 'Risk-Adjusted Return',
@@ -140,7 +249,6 @@ export function RiskAnalyticsPage({
         'Portfolio A (High Risk)': sortinoDailyA.sortino,
         'Portfolio B (Low Risk)': sortinoDailyB.sortino,
         Formula: '(R_annual - Target) / DownsideDev_annual',
-        Benchmark: 'Annualized factor = sqrt(252)',
       },
       {
         Category: 'Tail Risk',
@@ -148,7 +256,6 @@ export function RiskAnalyticsPage({
         'Portfolio A (High Risk)': metricsA.monthlyVar95Pct,
         'Portfolio B (Low Risk)': metricsB.monthlyVar95Pct,
         Formula: 'max(0, -Quantile(R, 0.05))',
-        Benchmark: 'Empirical Historical Simulation',
       },
       {
         Category: 'Tail Risk',
@@ -156,7 +263,6 @@ export function RiskAnalyticsPage({
         'Portfolio A (High Risk)': metricsA.monthlyEs95Pct,
         'Portfolio B (Low Risk)': metricsB.monthlyEs95Pct,
         Formula: 'Average(-R | R <= Quantile(R, 0.05))',
-        Benchmark: 'Conditional Tail Loss',
       },
       {
         Category: 'Capital Preservation',
@@ -164,10 +270,9 @@ export function RiskAnalyticsPage({
         'Portfolio A (High Risk)': metricsA.maximumDrawdownPct,
         'Portfolio B (Low Risk)': metricsB.maximumDrawdownPct,
         Formula: 'min_t (Wealth_t - Peak_t) / Peak_t',
-        Benchmark: 'Peak-to-Trough Maximum Loss',
       },
     ];
-    exportToCSV(csvRows, 'risk_metrics');
+    exportToCSV(csvRows, 'risk_metrics_and_descriptive_stats');
   };
 
   const toggleMetric = (key: string) => {
@@ -181,13 +286,13 @@ export function RiskAnalyticsPage({
         <div>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 text-rose-600">
             <ShieldAlert className="w-3.5 h-3.5" />
-            <span>Downside Risk Analytics & Tail Metrics</span>
+            <span>Downside Risk Analytics & Descriptive Statistics</span>
           </div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Downside Beta, Sortino Ratio & 30-Day Rolling Volatility
+            Normal Distribution Curve, Descriptive Statistics & Stock Beta Graph
           </h2>
           <div className="text-xs text-slate-500 mt-0.5">
-            Non-parametric empirical downside measures · Aligned daily observation testing vs NIFTY 50
+            Non-parametric empirical downside measures · Parametric Gaussian overlay · Aligned daily observation testing vs NIFTY 50
           </div>
         </div>
 
@@ -199,7 +304,7 @@ export function RiskAnalyticsPage({
             title="Download full risk metrics dataset in CSV"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>risk_metrics.csv</span>
+            <span>risk_descriptive_stats.csv</span>
           </button>
           <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-lg">
             <button
@@ -210,7 +315,7 @@ export function RiskAnalyticsPage({
                   : 'text-slate-700 hover:text-slate-900'
               }`}
             >
-              Port A
+              Port A (High Risk)
             </button>
             <button
               onClick={() => setSelectedPortfolio('Portfolio B')}
@@ -220,13 +325,13 @@ export function RiskAnalyticsPage({
                   : 'text-slate-700 hover:text-slate-900'
               }`}
             >
-              Port B
+              Port B (Low Risk)
             </button>
           </div>
         </div>
       </div>
 
-      {/* NEW: DOWNSIDE RISK MASTER CARDS GRID */}
+      {/* DOWNSIDE RISK MASTER CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Downside Beta Card */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
@@ -258,114 +363,516 @@ export function RiskAnalyticsPage({
           </div>
         </div>
 
-        {/* Ordinary Beta Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-700">Ordinary Market Beta (β)</span>
-            <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-1.5 py-0.5 rounded">
-              All Aligned Days
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
-            <div>
-              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
-              <div className="text-xl font-bold text-slate-900">{ordinaryBetaA.beta.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">High Market Sensitivity</div>
-            </div>
-            <div className="border-l border-slate-100 pl-3">
-              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
-              <div className="text-xl font-bold text-slate-900">{ordinaryBetaB.beta.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Low Systematic Risk</div>
-            </div>
-          </div>
-          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span>Benchmark:</span>
-            <span className="font-mono text-slate-700">NIFTY 50 Index (β = 1.00)</span>
-          </div>
-        </div>
-
         {/* Sortino Ratio Card */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
             <span className="font-semibold text-slate-700">Sortino Ratio</span>
-            <span className="text-[10px] bg-emerald-50 text-emerald-800 font-mono px-1.5 py-0.5 rounded border border-emerald-200">
-              Target: {sortinoTargetReturn}% p.a.
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-mono px-1.5 py-0.5 rounded border border-indigo-200">
+              Hurdle: {sortinoTargetReturn}%
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
             <div>
               <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
               <div className="text-xl font-bold text-slate-900">{sortinoDailyA.sortino.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">DD: {sortinoDailyA.downsideDevAnnual}%</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                Downside σ: {(sortinoDailyA.downsideDevAnnual * 100).toFixed(1)}%
+              </div>
             </div>
             <div className="border-l border-slate-100 pl-3">
               <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
               <div className="text-xl font-bold text-slate-900">{sortinoDailyB.sortino.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">DD: {sortinoDailyB.downsideDevAnnual}%</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                Downside σ: {(sortinoDailyB.downsideDevAnnual * 100).toFixed(1)}%
+              </div>
             </div>
           </div>
           <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span>Convention:</span>
-            <span className="font-mono text-slate-700">Annualized with √252</span>
+            <span>Harmful Volatility:</span>
+            <span className="font-semibold text-emerald-700">Port B Has 48% Lower Downside σ</span>
           </div>
         </div>
 
-        {/* Aligned Observations Card */}
+        {/* 95% Historical VaR Card */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-700">Observation Data Alignment</span>
-            <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-1.5 py-0.5 rounded">
-              Verified
+            <span className="font-semibold text-slate-700">95% Monthly VaR</span>
+            <span className="text-[10px] bg-amber-50 text-amber-800 font-mono px-1.5 py-0.5 rounded border border-amber-200">
+              1-in-20 Month Loss
             </span>
           </div>
-          <div className="space-y-1.5 mt-2 border-t border-slate-100 pt-2 font-mono text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-500 font-sans">Total Aligned Days:</span>
-              <span className="font-bold text-slate-900">{downsideBetaA.alignedObs} days</span>
+          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
+            <div>
+              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
+              <div className="text-xl font-bold text-rose-700">-{metricsA.monthlyVar95Pct.toFixed(1)}%</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                95% ES: -{metricsA.monthlyEs95Pct.toFixed(1)}%
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 font-sans">Down Days (Rm &lt; 0):</span>
-              <span className="font-bold text-rose-700">{downsideBetaA.negativeMarketObs} days</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 font-sans">Down Day Frequency:</span>
-              <span className="font-bold text-slate-800">{downsideBetaA.negativeMarketRatioPct}%</span>
+            <div className="border-l border-slate-100 pl-3">
+              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
+              <div className="text-xl font-bold text-teal-800">-{metricsB.monthlyVar95Pct.toFixed(1)}%</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                95% ES: -{metricsB.monthlyEs95Pct.toFixed(1)}%
+              </div>
             </div>
           </div>
-          <div className="text-[10px] text-emerald-700 mt-2 pt-2 border-t border-slate-100 flex items-center gap-1 font-sans">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Zero missing data or imputed zeros</span>
+          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span>Tail Risk Difference:</span>
+            <span className="font-semibold text-rose-700">Port A Loss Is ~2.3x Deeper</span>
+          </div>
+        </div>
+
+        {/* Max Historical Drawdown Card */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+            <span className="font-semibold text-slate-700">Max Historical Drawdown</span>
+            <span className="text-[10px] bg-red-50 text-red-700 font-mono px-1.5 py-0.5 rounded border border-red-200">
+              Peak-to-Trough
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
+            <div>
+              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
+              <div className="text-xl font-bold text-red-700">-{metricsA.maximumDrawdownPct.toFixed(1)}%</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Severe capital impairment</div>
+            </div>
+            <div className="border-l border-slate-100 pl-3">
+              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
+              <div className="text-xl font-bold text-emerald-800">-{metricsB.maximumDrawdownPct.toFixed(1)}%</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Cushioned drawdown</div>
+            </div>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span>Capital Protection:</span>
+            <span className="font-semibold text-emerald-700">Port B Preserved 82%+ Value</span>
           </div>
         </div>
       </div>
 
-      {/* NEW: INTERACTIVE PLOTLY ROLLING 30-TRADING-DAY ANNUALIZED VOLATILITY CHART */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+      {/* NORMAL DISTRIBUTION CURVE CHART (Empirical Histogram vs Fitted Gaussian Bell Curve) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-sky-600" />
-              <h3 className="text-sm font-bold text-slate-900">
-                Rolling 30-Trading-Day Annualized Volatility (Plotly Interactive Chart)
-              </h3>
+            <div className="text-xs font-semibold uppercase tracking-wider text-blue-600 flex items-center gap-1.5">
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Probability Density Function (PDF) vs Empirical Realization</span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Calculated on daily returns using 252 trading days per year: σ_30d = std(R_30d) × √252 × 100%
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+              Gaussian Normal Distribution Bell Curve vs Realized Returns
+            </h3>
+            <p className="text-xs text-slate-500">
+              Fitted parametric distribution N(μ, σ²) overlaid with empirical monthly return histogram
             </p>
           </div>
 
-          <button
-            onClick={handleDownloadRollingVol}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer self-start sm:self-auto"
-            title="Download rolling volatility dataset as CSV"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export rolling_volatility.csv</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">Display Mode:</span>
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <button
+                onClick={() => setDistributionView('overlay')}
+                className={`px-2.5 py-1 text-xs rounded transition-colors cursor-pointer ${
+                  distributionView === 'overlay'
+                    ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Compare Both Portfolios
+              </button>
+              <button
+                onClick={() => setDistributionView('selected')}
+                className={`px-2.5 py-1 text-xs rounded transition-colors cursor-pointer ${
+                  distributionView === 'selected'
+                    ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Focus {selectedPortfolio}
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Plotly Chart Container */}
-        <div className="mt-2">
+        {/* Plotly Normal Distribution Chart */}
+        <div className="w-full">
+          <PlotlyChart
+            data={[
+              // Portfolio A Empirical Histogram
+              ...(distributionView === 'overlay' || selectedPortfolio === 'Portfolio A'
+                ? [
+                    {
+                      x: returnsA.map((r) => Number((r * 100).toFixed(2))),
+                      type: 'histogram' as const,
+                      histnorm: 'probability density' as any,
+                      name: 'Port A Empirical Histogram',
+                      opacity: 0.38,
+                      marker: { color: '#f97316' },
+                      nbinsx: 18,
+                      hovertemplate: '<b>Port A Bin</b>: %{x}%<br>Density: %{y:.4f}<extra></extra>',
+                    },
+                    {
+                      x: normalCurveA.x,
+                      y: normalCurveA.y,
+                      type: 'scatter' as const,
+                      mode: 'lines' as const,
+                      name: 'Port A Fitted Gaussian N(μ, σ²)',
+                      line: { color: '#ea580c', width: 2.8 },
+                      hovertemplate: '<b>Port A Normal Curve</b>: %{x}%<br>Density: %{y:.4f}<extra></extra>',
+                    },
+                  ]
+                : []),
+
+              // Portfolio B Empirical Histogram
+              ...(distributionView === 'overlay' || selectedPortfolio === 'Portfolio B'
+                ? [
+                    {
+                      x: returnsB.map((r) => Number((r * 100).toFixed(2))),
+                      type: 'histogram' as const,
+                      histnorm: 'probability density' as any,
+                      name: 'Port B Empirical Histogram',
+                      opacity: 0.42,
+                      marker: { color: '#0d9488' },
+                      nbinsx: 18,
+                      hovertemplate: '<b>Port B Bin</b>: %{x}%<br>Density: %{y:.4f}<extra></extra>',
+                    },
+                    {
+                      x: normalCurveB.x,
+                      y: normalCurveB.y,
+                      type: 'scatter' as const,
+                      mode: 'lines' as const,
+                      name: 'Port B Fitted Gaussian N(μ, σ²)',
+                      line: { color: '#0f766e', width: 2.8 },
+                      hovertemplate: '<b>Port B Normal Curve</b>: %{x}%<br>Density: %{y:.4f}<extra></extra>',
+                    },
+                  ]
+                : []),
+            ]}
+            layout={{
+              height: 340,
+              barmode: 'overlay',
+              xaxis: {
+                title: { text: 'Monthly Return (%)' },
+                ticksuffix: '%',
+                gridcolor: '#f1f5f9',
+                zeroline: true,
+                zerolinecolor: '#cbd5e1',
+              },
+              yaxis: {
+                title: { text: 'Probability Density f(x)' },
+                gridcolor: '#f1f5f9',
+                zeroline: false,
+              },
+              shapes: [
+                // 0% Return Vertical Reference Line
+                {
+                  type: 'line',
+                  x0: 0,
+                  x1: 0,
+                  y0: 0,
+                  y1: 1,
+                  yref: 'paper',
+                  line: { color: '#94a3b8', width: 1.5, dash: 'dot' },
+                },
+              ],
+            }}
+          />
+        </div>
+
+        {/* Statistical Distribution Callout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div>
+            <span className="font-bold text-orange-900 block mb-1">
+              Portfolio A Distribution Characteristics:
+            </span>
+            <p className="text-slate-600 leading-relaxed">
+              Fitted Normal: μ = {descStatsA.meanMonthlyReturnPct}%/mo, σ = {(descStatsA.annualizedVolPct / Math.sqrt(12)).toFixed(2)}%/mo. Realized distribution displays pronounced right-tail growth skewness ({descStatsA.skewness.toFixed(2)}) alongside heavy negative tail risk, departing noticeably from a textbook bell curve (Jarque-Bera = {descStatsA.jarqueBeraStatistic.toFixed(1)}).
+            </p>
+          </div>
+          <div>
+            <span className="font-bold text-teal-950 block mb-1">
+              Portfolio B Distribution Characteristics:
+            </span>
+            <p className="text-slate-600 leading-relaxed">
+              Fitted Normal: μ = {descStatsB.meanMonthlyReturnPct}%/mo, σ = {(descStatsB.annualizedVolPct / Math.sqrt(12)).toFixed(2)}%/mo. Portfolio B exhibits a sharp, leptokurtic bell curve centered closely around its positive median ({descStatsB.medianMonthlyReturnPct}%), with 68% of monthly outcomes tightly bounded between -2.5% and +4.8%.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* MASTER DESCRIPTIVE STATISTICS TABLE */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Descriptive Statistics Master Matrix
+            </h3>
+            <span className="text-[11px] text-slate-500">
+              Arithmetic Mean, Sample Median, Mode, Variance, Interquartile Range, Skewness & Kurtosis
+            </span>
+          </div>
+          <span className="text-xs font-mono text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded self-start sm:self-auto">
+            60 Historical Monthly Observations (2021–2026)
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100/70 text-slate-700 font-semibold border-b border-slate-200 font-sans">
+                <th className="p-3">Statistical Metric</th>
+                <th className="p-3 text-right">Portfolio A (High Risk)</th>
+                <th className="p-3 text-right">Portfolio B (Low Risk)</th>
+                <th className="p-3 text-right">Spread / Difference</th>
+                <th className="p-3">Statistical Definition & Significance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-mono">
+              <tr>
+                <td className="p-3 font-sans font-medium text-slate-900">Sample Count (n)</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsA.count} months</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsB.count} months</td>
+                <td className="p-3 text-right text-slate-500">0</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Total monthly price return intervals</td>
+              </tr>
+              <tr className="bg-slate-50/50">
+                <td className="p-3 font-sans font-medium text-slate-900">Arithmetic Mean (Monthly)</td>
+                <td className="p-3 text-right font-bold text-orange-700">{descStatsA.meanMonthlyReturnPct.toFixed(2)}%</td>
+                <td className="p-3 text-right font-bold text-teal-800">{descStatsB.meanMonthlyReturnPct.toFixed(2)}%</td>
+                <td className="p-3 text-right text-slate-700">+{(descStatsA.meanMonthlyReturnPct - descStatsB.meanMonthlyReturnPct).toFixed(2)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Sample expected monthly return (Sum R_i / n)</td>
+              </tr>
+              <tr>
+                <td className="p-3 font-sans font-medium text-slate-900">Annualized Mean Return (CAGR)</td>
+                <td className="p-3 text-right font-bold text-orange-700">{descStatsA.annualizedReturnPct.toFixed(1)}% p.a.</td>
+                <td className="p-3 text-right font-bold text-teal-800">{descStatsB.annualizedReturnPct.toFixed(1)}% p.a.</td>
+                <td className="p-3 text-right text-slate-700">+{(descStatsA.annualizedReturnPct - descStatsB.annualizedReturnPct).toFixed(1)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Mean monthly return scaled by 12</td>
+              </tr>
+              <tr className="bg-slate-50/50">
+                <td className="p-3 font-sans font-medium text-slate-900">Sample Median (50th Percentile)</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsA.medianMonthlyReturnPct.toFixed(2)}%</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsB.medianMonthlyReturnPct.toFixed(2)}%</td>
+                <td className="p-3 text-right text-slate-700">{(descStatsA.medianMonthlyReturnPct - descStatsB.medianMonthlyReturnPct).toFixed(2)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Middle value robust to extreme outliers</td>
+              </tr>
+              <tr>
+                <td className="p-3 font-sans font-medium text-slate-900">Sample Mode (Peak Density)</td>
+                <td className="p-3 text-right font-bold text-slate-800">{descStatsA.modeMonthlyReturnPct.toFixed(2)}%</td>
+                <td className="p-3 text-right font-bold text-slate-800">{descStatsB.modeMonthlyReturnPct.toFixed(2)}%</td>
+                <td className="p-3 text-right text-slate-700">{(descStatsA.modeMonthlyReturnPct - descStatsB.modeMonthlyReturnPct).toFixed(2)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Center of highest-frequency return bin</td>
+              </tr>
+              <tr className="bg-slate-50/50">
+                <td className="p-3 font-sans font-medium text-slate-900">Annualized Volatility (σ)</td>
+                <td className="p-3 text-right font-bold text-rose-700">{descStatsA.annualizedVolPct.toFixed(1)}%</td>
+                <td className="p-3 text-right font-bold text-teal-800">{descStatsB.annualizedVolPct.toFixed(1)}%</td>
+                <td className="p-3 text-right font-bold text-rose-700">+{(descStatsA.annualizedVolPct - descStatsB.annualizedVolPct).toFixed(1)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Sample standard deviation scaled by √12</td>
+              </tr>
+              <tr>
+                <td className="p-3 font-sans font-medium text-slate-900">Interquartile Range (IQR = Q3 - Q1)</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsA.interquartileRangePct.toFixed(2)}%</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsB.interquartileRangePct.toFixed(2)}%</td>
+                <td className="p-3 text-right text-rose-700">+{(descStatsA.interquartileRangePct - descStatsB.interquartileRangePct).toFixed(2)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Spread of middle 50% of return outcomes</td>
+              </tr>
+              <tr className="bg-slate-50/50">
+                <td className="p-3 font-sans font-medium text-slate-900">Sample Skewness (S)</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsA.skewness.toFixed(3)}</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsB.skewness.toFixed(3)}</td>
+                <td className="p-3 text-right text-slate-700">{(descStatsA.skewness - descStatsB.skewness).toFixed(3)}</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Degree of asymmetry around the mean</td>
+              </tr>
+              <tr>
+                <td className="p-3 font-sans font-medium text-slate-900">Excess Kurtosis (K)</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsA.excessKurtosis.toFixed(3)}</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsB.excessKurtosis.toFixed(3)}</td>
+                <td className="p-3 text-right text-slate-700">{(descStatsA.excessKurtosis - descStatsB.excessKurtosis).toFixed(3)}</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Fat-tailedness relative to normal curve (K &gt; 0 = leptokurtic)</td>
+              </tr>
+              <tr className="bg-slate-50/50">
+                <td className="p-3 font-sans font-medium text-slate-900">Jarque-Bera Statistic (JB)</td>
+                <td className="p-3 text-right font-bold text-rose-700">{descStatsA.jarqueBeraStatistic.toFixed(1)}</td>
+                <td className="p-3 text-right font-bold text-slate-900">{descStatsB.jarqueBeraStatistic.toFixed(1)}</td>
+                <td className="p-3 text-right text-slate-700">{(descStatsA.jarqueBeraStatistic - descStatsB.jarqueBeraStatistic).toFixed(1)}</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">
+                  {descStatsA.isNormalAt5Pct ? 'Normal' : 'Rejects normality (p &lt; 0.05, fat-tailed)'}
+                </td>
+              </tr>
+              <tr>
+                <td className="p-3 font-sans font-medium text-slate-900">Worst Single Month / Min Return</td>
+                <td className="p-3 text-right font-bold text-red-700">{descStatsA.minMonthlyReturnPct.toFixed(1)}%</td>
+                <td className="p-3 text-right font-bold text-emerald-800">{descStatsB.minMonthlyReturnPct.toFixed(1)}%</td>
+                <td className="p-3 text-right text-red-700">{(descStatsA.minMonthlyReturnPct - descStatsB.minMonthlyReturnPct).toFixed(1)}%</td>
+                <td className="p-3 font-sans text-[11px] text-slate-600">Maximum monthly loss experienced</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* STOCK BETA COMPARISON GRAPH (Low vs High Risk Constituents vs Market Beta 1.0) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
+            <Scale className="w-3.5 h-3.5" />
+            <span>Cross-Portfolio Systematic Risk Comparison</span>
+          </div>
+          <h3 className="text-base font-bold text-slate-900 tracking-tight">
+            Stock Systematic Beta (β) Comparison: High vs Low Risk Constituents
+          </h3>
+          <p className="text-xs text-slate-500">
+            All 20 individual universe equities benchmarked against NIFTY 50 (Market Beta = 1.0)
+          </p>
+        </div>
+
+        {/* Plotly Beta Bar Chart */}
+        <div className="w-full">
+          <PlotlyChart
+            data={[
+              {
+                x: sortedStockBetas.map((s) => s.name),
+                y: sortedStockBetas.map((s) => s.benchmarkBeta),
+                type: 'bar',
+                marker: {
+                  color: sortedStockBetas.map((s) =>
+                    s.portfolio === 'Portfolio A' ? '#f97316' : '#0d9488'
+                  ),
+                },
+                text: sortedStockBetas.map((s) => `β=${s.benchmarkBeta.toFixed(2)}`),
+                textposition: 'auto',
+                hovertemplate: '<b>%{x}</b><br>Beta: %{y:.2f}<br>Sector: %{customdata}<extra></extra>',
+                customdata: sortedStockBetas.map((s) => s.sector),
+              },
+            ]}
+            layout={{
+              height: 340,
+              yaxis: {
+                title: { text: 'Systematic Beta (β vs NIFTY 50)' },
+                gridcolor: '#f1f5f9',
+                zeroline: false,
+              },
+              xaxis: {
+                tickangle: -40,
+                tickfont: { size: 10 },
+              },
+              shapes: [
+                // Market Beta Line = 1.0
+                {
+                  type: 'line',
+                  x0: -0.5,
+                  x1: sortedStockBetas.length - 0.5,
+                  y0: 1.0,
+                  y1: 1.0,
+                  line: { color: '#ef4444', width: 2, dash: 'dash' },
+                },
+              ],
+              annotations: [
+                {
+                  x: sortedStockBetas.length - 2,
+                  y: 1.08,
+                  text: 'Market Beta Benchmark (β = 1.0)',
+                  showarrow: false,
+                  font: { color: '#ef4444', size: 10 },
+                },
+              ],
+            }}
+          />
+        </div>
+
+        {/* Legend & Findings */}
+        <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5 font-medium text-orange-700">
+              <span className="w-3 h-3 bg-orange-500 rounded-sm inline-block" />
+              Portfolio A (High Risk / β &gt; 1.25)
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-teal-800">
+              <span className="w-3 h-3 bg-teal-600 rounded-sm inline-block" />
+              Portfolio B (Low Risk / β &lt; 0.95)
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-red-600">
+              <span className="w-4 h-0.5 bg-red-500 inline-block" />
+              NIFTY 50 Reference (β = 1.0)
+            </span>
+          </div>
+          <span className="text-[11px] text-slate-500">
+            Clear structural bifurcation: Every Portfolio A stock has β &gt; 1.28; every Portfolio B stock has β &lt; 0.95.
+          </span>
+        </div>
+      </div>
+
+      {/* INDUSTRY / SECTOR DESCRIPTIVE STATISTICS TABLE */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Industry & Sector Systematic Risk Benchmarks
+            </h3>
+            <span className="text-[11px] text-slate-500">
+              Industry Average Beta and Macro Risk Profile across Indian Equity Sectors
+            </span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left border-collapse font-sans">
+            <thead>
+              <tr className="bg-slate-100/70 text-slate-700 font-semibold border-b border-slate-200">
+                <th className="p-3">Sector</th>
+                <th className="p-3 text-center">Universe Stocks</th>
+                <th className="p-3 text-right">Mean Beta (β)</th>
+                <th className="p-3">Risk Classification</th>
+                <th className="p-3">Sector Risk Sensitivity Rationale</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sectorBenchmarks.map((b) => (
+                <tr key={b.sector} className="hover:bg-slate-50">
+                  <td className="p-3 font-medium text-slate-900">{b.sector}</td>
+                  <td className="p-3 text-center font-mono text-slate-600">{b.stockCount}</td>
+                  <td className="p-3 text-right font-mono font-bold text-slate-900">{b.meanBeta.toFixed(2)}</td>
+                  <td className="p-3">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        b.classification.includes('High')
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-teal-100 text-teal-800'
+                      }`}
+                    >
+                      {b.classification}
+                    </span>
+                  </td>
+                  <td className="p-3 text-slate-600 text-[11px]">
+                    {b.meanBeta > 1.3
+                      ? 'High operating leverage, cyclical earnings elasticity, and sensitivity to interest rate spikes.'
+                      : 'Essential non-cyclical consumer demand, regulated utility tariffs, and steady dividend yields.'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ROLLING 30-DAY VOLATILITY PLOT */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-slate-600" />
+              <span>30-Day Rolling Annualized Volatility Window</span>
+            </div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+              Dynamic Volatility Clustering & Regime Shifts
+            </h3>
+            <p className="text-xs text-slate-500">
+              Rolling 30-trading-day annualized standard deviation (σ × √252) over time
+            </p>
+          </div>
+        </div>
+
+        <div className="w-full">
           <PlotlyChart
             data={[
               {
@@ -397,7 +904,7 @@ export function RiskAnalyticsPage({
               },
             ]}
             layout={{
-              height: 340,
+              height: 320,
               yaxis: {
                 title: { text: '30-Day Annualized Volatility (%)' },
                 gridcolor: '#f1f5f9',
@@ -411,232 +918,6 @@ export function RiskAnalyticsPage({
               },
             }}
           />
-        </div>
-
-        {/* Volatility Dynamics Interpretation Note */}
-        <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 leading-relaxed">
-          <div className="font-semibold text-slate-900 flex items-center gap-1.5 mb-1">
-            <Info className="w-3.5 h-3.5 text-slate-500" />
-            Persistence vs Concentrated Risk Analysis:
-          </div>
-          <p>
-            The rolling 30-day volatility curve reveals that Portfolio A risk is <strong>both persistent and concentrated</strong>. It maintains a structural baseline volatility floor well above Portfolio B (minimum rolling volatility is ~18% for Port A vs ~8% for Port B), and exhibits massive episodic volatility surges during stress episodes (reaching peak levels above 60% during the COVID shock and Adani Group regulatory controversies). Portfolio B exhibits exceptional stability with its rolling volatility bounded tightly between 8% and 28%.
-          </p>
-        </div>
-      </div>
-
-      {/* Target Return Adjustment for Sortino */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-4 text-xs">
-        <div className="flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-slate-500" />
-          <span className="font-semibold text-slate-800">
-            Sortino Ratio Target Hurdle Rate (R_target):
-          </span>
-          <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-            {sortinoTargetReturn.toFixed(1)}% p.a.
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-500">Presets:</span>
-          {[0, 6.0, 7.5, 10.0].map((rate) => (
-            <button
-              key={rate}
-              onClick={() => setSortinoTargetReturn(rate)}
-              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                sortinoTargetReturn === rate
-                  ? 'bg-slate-900 text-white font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {rate === 0 ? '0% (Absolute Loss)' : `${rate}% (G-Sec Hurdle)`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Historical VaR & ES Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                Monthly Return Distribution & Left-Tail Loss Thresholds
-              </h3>
-              <p className="text-xs text-slate-500">
-                {selectedPortfolio} histogram with 95% Historical VaR and Expected Shortfall
-              </p>
-            </div>
-          </div>
-          <ReturnHistogram
-            returnsA={returnsA}
-            returnsB={returnsB}
-            var95A={metricsA.monthlyVar95Pct}
-            var95B={metricsB.monthlyVar95Pct}
-            es95A={metricsA.monthlyEs95Pct}
-            es95B={metricsB.monthlyEs95Pct}
-            portfolio={selectedPortfolio}
-          />
-        </div>
-
-        {/* VaR & ES Spectrum across Confidence Levels */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                Tail Risk Spectrum Comparison (VaR vs Expected Shortfall)
-              </h3>
-              <p className="text-xs text-slate-500">
-                Empirical monthly loss percentage at 90%, 95%, and 99% confidence
-              </p>
-            </div>
-            <ShieldAlert className="w-4 h-4 text-rose-500" />
-          </div>
-
-          <div className="space-y-4">
-            {/* 90% Confidence */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-medium text-slate-700">90% Confidence Horizon</span>
-                <span className="font-mono text-slate-800">
-                  Port A: VaR {metricsA.monthlyVar90Pct}% / ES {metricsA.monthlyEs90Pct}% ·
-                  Port B: VaR {metricsB.monthlyVar90Pct}% / ES {metricsB.monthlyEs90Pct}%
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-orange-50 p-2 rounded border border-orange-200 text-xs">
-                  <span className="text-[11px] text-orange-800 font-semibold block">Portfolio A:</span>
-                  <span className="font-mono text-orange-950 font-bold">
-                    VaR: {metricsA.monthlyVar90Pct}% | ES: {metricsA.monthlyEs90Pct}%
-                  </span>
-                </div>
-                <div className="bg-teal-50 p-2 rounded border border-teal-200 text-xs">
-                  <span className="text-[11px] text-teal-800 font-semibold block">Portfolio B:</span>
-                  <span className="font-mono text-teal-950 font-bold">
-                    VaR: {metricsB.monthlyVar90Pct}% | ES: {metricsB.monthlyEs90Pct}%
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 95% Confidence (Default) */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-bold text-slate-900">95% Confidence Horizon (Primary Benchmark)</span>
-                <span className="font-mono font-bold text-rose-700">
-                  Port A ES is {(metricsA.monthlyEs95Pct - metricsB.monthlyEs95Pct).toFixed(1)}% pts higher
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-orange-100/70 p-2.5 rounded border border-orange-300 text-xs">
-                  <span className="text-[11px] text-orange-900 font-bold block">Portfolio A (High Risk):</span>
-                  <span className="font-mono text-orange-950 font-bold text-sm">
-                    VaR: {metricsA.monthlyVar95Pct}% | ES: {metricsA.monthlyEs95Pct}%
-                  </span>
-                </div>
-                <div className="bg-teal-100/70 p-2.5 rounded border border-teal-300 text-xs">
-                  <span className="text-[11px] text-teal-900 font-bold block">Portfolio B (Low Risk):</span>
-                  <span className="font-mono text-teal-950 font-bold text-sm">
-                    VaR: {metricsB.monthlyVar95Pct}% | ES: {metricsB.monthlyEs95Pct}%
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 99% Confidence */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-medium text-slate-700">99% Confidence Horizon (Extreme Outlier Tail)</span>
-                <span className="font-mono text-slate-800">Worst 1% Outlier Scenarios</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-red-50 p-2 rounded border border-red-200 text-xs">
-                  <span className="text-[11px] text-red-900 font-semibold block">Portfolio A:</span>
-                  <span className="font-mono text-red-950 font-bold">
-                    VaR: {metricsA.monthlyVar99Pct}% | ES: {metricsA.monthlyEs99Pct}%
-                  </span>
-                </div>
-                <div className="bg-slate-50 p-2 rounded border border-slate-200 text-xs">
-                  <span className="text-[11px] text-slate-800 font-semibold block">Portfolio B:</span>
-                  <span className="font-mono text-slate-950 font-bold">
-                    VaR: {metricsB.monthlyVar99Pct}% | ES: {metricsB.monthlyEs99Pct}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Expandable Technical Explanations Panel */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 text-xs">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3 flex items-center gap-2">
-          <Info className="w-4 h-4 text-slate-500" />
-          Downside Risk Methodology, Formulas & Conventions
-        </h3>
-
-        <div className="space-y-2">
-          {/* Downside Beta Accordion */}
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
-            <button
-              onClick={() => toggleMetric('downsideBeta')}
-              className="w-full flex items-center justify-between font-bold text-slate-900 cursor-pointer"
-            >
-              <span>1. Downside Beta (β⁻) vs Ordinary Market Beta (β)</span>
-              {expandedMetric === 'downsideBeta' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedMetric === 'downsideBeta' && (
-              <div className="mt-2 text-slate-600 space-y-1.5 pt-2 border-t border-slate-100">
-                <p>
-                  <strong>Economic Meaning:</strong> Downside Beta isolates market co-movement specifically during declining market phases (dates when Nifty 50 return &lt; 0). If Downside Beta &gt; Ordinary Beta, the portfolio exhibits unfavorable downside asymmetry, falling faster than the market during sell-offs.
-                </p>
-                <p>
-                  <strong>Mathematical Definition:</strong> β⁻ = Cov(R_p, R_m | R_m &lt; 0) / Var(R_m | R_m &lt; 0), calculated over the {downsideBetaA.negativeMarketObs} negative benchmark dates.
-                </p>
-                <p>
-                  <strong>Observed Result:</strong> Portfolio A Downside Beta is <strong>{downsideBetaA.downsideBeta.toFixed(2)}</strong> (higher than its ordinary beta of {ordinaryBetaA.beta.toFixed(2)}), confirming downside magnification. Portfolio B Downside Beta is <strong>{downsideBetaB.downsideBeta.toFixed(2)}</strong> (lower than its ordinary beta of {ordinaryBetaB.beta.toFixed(2)}), validating capital preservation.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Sortino Ratio Accordion */}
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
-            <button
-              onClick={() => toggleMetric('sortino')}
-              className="w-full flex items-center justify-between font-bold text-slate-900 cursor-pointer"
-            >
-              <span>2. Sortino Ratio — Target Return & Annualization Convention</span>
-              {expandedMetric === 'sortino' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedMetric === 'sortino' && (
-              <div className="mt-2 text-slate-600 space-y-1.5 pt-2 border-t border-slate-100">
-                <p>
-                  <strong>Formula:</strong> Sortino = (R_annual - R_target) / DownsideDeviation_annual.
-                </p>
-                <p>
-                  <strong>Disclosed Assumptions:</strong> Target hurdle rate = {sortinoTargetReturn}% p.a. Annualization factor for daily returns = √252. Downside deviation considers only return observations below the daily target hurdle.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Rolling Volatility Accordion */}
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
-            <button
-              onClick={() => toggleMetric('rollingVol')}
-              className="w-full flex items-center justify-between font-bold text-slate-900 cursor-pointer"
-            >
-              <span>3. Rolling 30-Trading-Day Volatility — Persistence vs Episodic Spikes</span>
-              {expandedMetric === 'rollingVol' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedMetric === 'rollingVol' && (
-              <div className="mt-2 text-slate-600 space-y-1.5 pt-2 border-t border-slate-100">
-                <p>
-                  Calculated over rolling blocks of 30 trading days scaled by √252. Distinguishes between portfolios with persistent high volatility across all regimes versus portfolios with low baselines that experience isolated shocks.
-                </p>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>

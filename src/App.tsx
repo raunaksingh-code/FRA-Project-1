@@ -274,6 +274,7 @@ export default function App() {
                 filters={filters}
                 rolling12A={rolling12A}
                 rolling12B={rolling12B}
+                monthlyReturns={monthlyReturns}
               />
             )}
 
@@ -292,7 +293,12 @@ export default function App() {
             )}
 
             {currentPage === 'stress' && (
-              <StressTestingPage filters={filters} />
+              <StressTestingPage
+                filters={filters}
+                weightsA={weightsA}
+                weightsB={weightsB}
+                monthlyReturns={monthlyReturns}
+              />
             )}
 
             {currentPage === 'frontier' && (
@@ -300,6 +306,12 @@ export default function App() {
                 filters={filters}
                 onChangeFilters={handleUpdateFilters}
                 monthlyReturns={monthlyReturns}
+                weightsA={weightsA}
+                weightsB={weightsB}
+                onChangeWeightsA={setWeightsA}
+                onChangeWeightsB={setWeightsB}
+                metricsA={metricsA}
+                metricsB={metricsB}
               />
             )}
 

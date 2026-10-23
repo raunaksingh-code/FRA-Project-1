@@ -764,6 +764,8 @@ export function EfficientFrontierPlot({
     summary.minVol.volatilityPct,
     summary.maxSharpe.volatilityPct,
     summary.equalWeight.volatilityPct,
+    ...(summary.currentCustom ? [summary.currentCustom.volatilityPct] : []),
+    ...(customPoint ? [customPoint.volPct] : []),
   ];
 
   const allRets = [
@@ -772,6 +774,8 @@ export function EfficientFrontierPlot({
     summary.minVol.expectedReturnPct,
     summary.maxSharpe.expectedReturnPct,
     summary.equalWeight.expectedReturnPct,
+    ...(summary.currentCustom ? [summary.currentCustom.expectedReturnPct] : []),
+    ...(customPoint ? [customPoint.returnPct] : []),
   ];
 
   const minX = Math.max(0, Math.min(...allVols) * 0.85);
@@ -790,6 +794,10 @@ export function EfficientFrontierPlot({
   const maxSharpeX = getX(summary.maxSharpe.volatilityPct);
   const maxSharpeY = getY(summary.maxSharpe.expectedReturnPct);
   const rfY = getY(rf * 100);
+
+  const customPortfolioPt = summary.currentCustom;
+  const customX = customPortfolioPt ? getX(customPortfolioPt.volatilityPct) : null;
+  const customY = customPortfolioPt ? getY(customPortfolioPt.expectedReturnPct) : null;
 
   return (
     <div className="relative w-full">
@@ -869,6 +877,32 @@ export function EfficientFrontierPlot({
         {/* Frontier Line */}
         <path d={frontierPath} fill="none" stroke="#0284c7" strokeWidth="3" />
 
+        {/* Projections to axes for user's custom portfolio */}
+        {customX !== null && customY !== null && (
+          <g className="transition-all duration-300">
+            <line
+              x1={padLeft}
+              y1={customY}
+              x2={customX}
+              y2={customY}
+              stroke="#8b5cf6"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              strokeOpacity={0.75}
+            />
+            <line
+              x1={customX}
+              y1={customY}
+              x2={customX}
+              y2={padTop + chartH}
+              stroke="#8b5cf6"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              strokeOpacity={0.75}
+            />
+          </g>
+        )}
+
         {/* Minimum Volatility Marker (Star / Green) */}
         <g
           transform={`translate(${getX(summary.minVol.volatilityPct)}, ${getY(summary.minVol.expectedReturnPct)})`}
@@ -892,7 +926,7 @@ export function EfficientFrontierPlot({
         {/* Equal Weight Benchmark Marker (Diamond) */}
         <g
           transform={`translate(${getX(summary.equalWeight.volatilityPct)}, ${getY(summary.equalWeight.expectedReturnPct)})`}
-          onMouseEnter={() => setHoverPt({ ...summary.equalWeight, label: 'Current Equal-Weight' })}
+          onMouseEnter={() => setHoverPt({ ...summary.equalWeight, label: 'Equal-Weight Benchmark (10% Each)' })}
           className="cursor-pointer"
         >
           <rect
@@ -907,8 +941,53 @@ export function EfficientFrontierPlot({
           />
         </g>
 
-        {/* Custom Point if provided */}
-        {customPoint && (
+        {/* User's Current Custom Portfolio Allocation Marker */}
+        {customPortfolioPt && customX !== null && customY !== null && (
+          <g
+            transform={`translate(${customX}, ${customY})`}
+            onMouseEnter={() =>
+              setHoverPt({
+                ...customPortfolioPt,
+                label: 'Your Current Allocation (Custom Weights)',
+              })
+            }
+            className="cursor-pointer"
+          >
+            {/* Outer animated halo */}
+            <circle r={14} fill="#8b5cf6" fillOpacity={0.25} />
+            <circle r={8} fill="#7c3aed" stroke="#ffffff" strokeWidth="2.5" />
+            <circle r={3} fill="#ffffff" />
+            
+            {/* Visual Callout Badge Flag */}
+            <g transform="translate(0, -26)">
+              <rect
+                x={-68}
+                y={-14}
+                width={136}
+                height={20}
+                rx={10}
+                fill="#6d28d9"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+                filter="drop-shadow(0 2px 4px rgba(0,0,0,0.2))"
+              />
+              <text
+                x={0}
+                y={0}
+                fontSize="9.5"
+                fontWeight="700"
+                fill="#ffffff"
+                textAnchor="middle"
+                dominantBaseline="central"
+              >
+                ★ Your Current Allocation
+              </text>
+            </g>
+          </g>
+        )}
+
+        {/* Custom Point if provided separately */}
+        {customPoint && !customPortfolioPt && (
           <g
             transform={`translate(${getX(customPoint.volPct)}, ${getY(customPoint.returnPct)})`}
             onMouseEnter={() =>
@@ -927,27 +1006,41 @@ export function EfficientFrontierPlot({
 
       {/* Hover Card */}
       {hoverPt && (
-        <div className="absolute top-4 right-6 z-20 bg-slate-900/95 text-white p-3 rounded-lg text-xs shadow-xl border border-slate-700 min-w-[200px]">
+        <div className="absolute top-4 right-6 z-20 bg-slate-900/95 text-white p-3 rounded-lg text-xs shadow-xl border border-slate-700 min-w-[210px] backdrop-blur-xs">
           <div className="font-semibold text-sky-400 border-b border-slate-700 pb-1 mb-1">
             {hoverPt.label}
           </div>
           <div className="flex justify-between py-0.5">
             <span className="text-slate-400">Exp Return:</span>
-            <span className="font-mono text-emerald-400">{hoverPt.expectedReturnPct}%</span>
+            <span className="font-mono text-emerald-400 font-bold">{hoverPt.expectedReturnPct}% p.a.</span>
           </div>
           <div className="flex justify-between py-0.5">
             <span className="text-slate-400">Volatility:</span>
-            <span className="font-mono text-amber-400">{hoverPt.volatilityPct}%</span>
+            <span className="font-mono text-amber-400 font-bold">{hoverPt.volatilityPct}% p.a.</span>
           </div>
           <div className="flex justify-between py-0.5">
             <span className="text-slate-400">Sharpe Ratio:</span>
-            <span className="font-mono text-cyan-300">{hoverPt.sharpeRatio}</span>
+            <span className="font-mono text-cyan-300 font-bold">{hoverPt.sharpeRatio}</span>
           </div>
+          {summary.maxSharpe && hoverPt.sharpeRatio !== summary.maxSharpe.sharpeRatio && (
+            <div className="mt-1 pt-1 border-t border-slate-800 text-[11px] text-slate-300 flex justify-between">
+              <span>Max Sharpe Diff:</span>
+              <span className="font-mono text-rose-300">
+                {(hoverPt.sharpeRatio - summary.maxSharpe.sharpeRatio).toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Legend */}
       <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs text-slate-700">
+        {summary.currentCustom && (
+          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-violet-50 rounded-full border border-violet-200">
+            <span className="w-3 h-3 rounded-full bg-violet-600 border border-white inline-block shadow-2xs" />
+            <span className="font-bold text-violet-900">Your Current Allocation (Custom Weights)</span>
+          </div>
+        )}
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-0.5 bg-sky-600 inline-block" />
           <span>Markowitz Efficient Frontier</span>
@@ -962,7 +1055,7 @@ export function EfficientFrontierPlot({
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 bg-indigo-500 rotate-45 inline-block" />
-          <span className="font-medium text-indigo-800">Equal Weight</span>
+          <span className="font-medium text-indigo-800">Equal Weight (10%)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-0.5 bg-blue-500 border-dashed border-b border-blue-500 inline-block" />

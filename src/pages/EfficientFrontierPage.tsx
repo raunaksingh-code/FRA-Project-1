@@ -1,333 +1,747 @@
 import React, { useState, useMemo } from 'react';
-import { MonthlyReturnRow, GlobalFilterState, FrontierOptimizationSummary } from '../types';
-import { runMarkowitzOptimization, solveTargetReturnPortfolio } from '../utils/optimizer';
-import { extractReturns } from '../utils/math';
+import {
+  MonthlyReturnRow,
+  GlobalFilterState,
+  FrontierOptimizationSummary,
+  PortfolioPerformanceMetrics,
+} from '../types';
+import {
+  runMarkowitzOptimization,
+  solveTargetReturnPortfolio,
+  computeAnnualizedMuAndCov,
+} from '../utils/optimizer';
+import { extractReturns, formatINR } from '../utils/math';
 import { REAL_YAHOO_MONTHLY_RETURNS } from '../data/realMarketData';
-import { PORTFOLIO_A_STOCKS, PORTFOLIO_B_STOCKS } from '../data/universe';
-import { EfficientFrontierPlot } from '../components/charts/Charts';
-import { TrendingUp, Target, Sliders, CheckCircle2, AlertCircle } from 'lucide-react';
+import { PORTFOLIO_A_STOCKS, PORTFOLIO_B_STOCKS, TICKER_TO_STOCK } from '../data/universe';
+import { PlotlyChart } from '../components/charts/PlotlyChart';
+import {
+  TrendingUp,
+  Target,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  ArrowRight,
+  RotateCcw,
+  Sliders,
+  Check,
+  Layers,
+  Award,
+  Calendar,
+  LineChart,
+} from 'lucide-react';
 
 interface EfficientFrontierProps {
   filters: GlobalFilterState;
   onChangeFilters: (f: Partial<GlobalFilterState>) => void;
   monthlyReturns?: MonthlyReturnRow[];
+  weightsA?: Record<string, number>;
+  weightsB?: Record<string, number>;
+  onChangeWeightsA?: (w: Record<string, number>) => void;
+  onChangeWeightsB?: (w: Record<string, number>) => void;
+  metricsA?: PortfolioPerformanceMetrics;
+  metricsB?: PortfolioPerformanceMetrics;
 }
 
 export function EfficientFrontierPage({
   filters,
   onChangeFilters,
   monthlyReturns = REAL_YAHOO_MONTHLY_RETURNS,
+  weightsA = {},
+  weightsB = {},
+  onChangeWeightsA,
+  onChangeWeightsB,
+  metricsA,
+  metricsB,
 }: EfficientFrontierProps) {
-  const [selectedPortfolio, setSelectedPortfolio] = useState<'Portfolio A' | 'Portfolio B'>('Portfolio A');
+  const [viewMode, setViewMode] = useState<'Portfolio A' | 'Portfolio B' | 'Dual Overlay'>('Dual Overlay');
   const [maxStockWeight, setMaxStockWeight] = useState<number>(35); // 35% cap default
   const [targetReturnInput, setTargetReturnInput] = useState<number>(24); // 24% target
   const [activeRegime, setActiveRegime] = useState<'5Year' | 'Calm' | 'Crisis'>('5Year');
+  const [notification, setNotification] = useState<string | null>(null);
 
-  const universeStocks = selectedPortfolio === 'Portfolio A' ? PORTFOLIO_A_STOCKS : PORTFOLIO_B_STOCKS;
-  const tickers = universeStocks.map((s) => s.ticker);
+  const activeFocusPortfolio = viewMode === 'Portfolio B' ? 'Portfolio B' : 'Portfolio A';
 
-  // Extract return series map from verified returns
-  const stockReturnsMap = useMemo(() => {
+  // Extract return series maps for both portfolios
+  const tickersA = PORTFOLIO_A_STOCKS.map((s) => s.ticker);
+  const tickersB = PORTFOLIO_B_STOCKS.map((s) => s.ticker);
+
+  const stockReturnsMapA = useMemo(() => {
     const map: Record<string, number[]> = {};
-    tickers.forEach((t) => {
+    tickersA.forEach((t) => {
       let r = extractReturns(monthlyReturns, t);
-      // For regime comparisons:
-      if (activeRegime === 'Calm') {
-        // First 36 months proxy
-        r = r.slice(0, 36);
-      } else if (activeRegime === 'Crisis') {
-        // High volatility window
-        r = r.slice(12, 24);
-      }
+      if (activeRegime === 'Calm') r = r.slice(0, 36);
+      else if (activeRegime === 'Crisis') r = r.slice(12, 24);
       map[t] = r;
     });
     return map;
-  }, [tickers, activeRegime, monthlyReturns]);
+  }, [tickersA, activeRegime, monthlyReturns]);
 
-  // Run Markowitz Optimization
-  const optimizationSummary: FrontierOptimizationSummary = useMemo(() => {
+  const stockReturnsMapB = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    tickersB.forEach((t) => {
+      let r = extractReturns(monthlyReturns, t);
+      if (activeRegime === 'Calm') r = r.slice(0, 36);
+      else if (activeRegime === 'Crisis') r = r.slice(12, 24);
+      map[t] = r;
+    });
+    return map;
+  }, [tickersB, activeRegime, monthlyReturns]);
+
+  // Markowitz Optimizations for both portfolios
+  const summaryA: FrontierOptimizationSummary = useMemo(() => {
     return runMarkowitzOptimization(
-      stockReturnsMap,
+      stockReturnsMapA,
       filters.riskFreeRatePct / 100,
       maxStockWeight / 100,
-      1000
+      800,
+      weightsA
     );
-  }, [stockReturnsMap, filters.riskFreeRatePct, maxStockWeight]);
+  }, [stockReturnsMapA, filters.riskFreeRatePct, maxStockWeight, weightsA]);
+
+  const summaryB: FrontierOptimizationSummary = useMemo(() => {
+    return runMarkowitzOptimization(
+      stockReturnsMapB,
+      filters.riskFreeRatePct / 100,
+      maxStockWeight / 100,
+      800,
+      weightsB
+    );
+  }, [stockReturnsMapB, filters.riskFreeRatePct, maxStockWeight, weightsB]);
+
+  const activeSummary = activeFocusPortfolio === 'Portfolio A' ? summaryA : summaryB;
+  const activeWeights = activeFocusPortfolio === 'Portfolio A' ? weightsA : weightsB;
+  const activeOnChangeWeights = activeFocusPortfolio === 'Portfolio A' ? onChangeWeightsA : onChangeWeightsB;
 
   // Target Return Portfolio Solver
   const targetResult = useMemo(() => {
-    const mu = universeStocks.map((s) => {
-      const r = stockReturnsMap[s.ticker] || [];
-      return (r.reduce((a, b) => a + b, 0) / (r.length || 1)) * 12;
+    const activeMap = activeFocusPortfolio === 'Portfolio A' ? stockReturnsMapA : stockReturnsMapB;
+    const { mu, cov } = computeAnnualizedMuAndCov(activeMap);
+    return solveTargetReturnPortfolio(mu, cov, targetReturnInput / 100, maxStockWeight / 100);
+  }, [activeFocusPortfolio, stockReturnsMapA, stockReturnsMapB, targetReturnInput, maxStockWeight]);
+
+  // MARKOWITZ RESULTS OVER TIME: Historical cumulative price / growth series
+  const markowitzTimeSeries = useMemo(() => {
+    let runningMaxSharpe = filters.initialCapital;
+    let runningMinVol = filters.initialCapital;
+    let runningCustom = filters.initialCapital;
+    let runningEqual = filters.initialCapital;
+    let runningBench = filters.initialCapital;
+
+    const basePoint = {
+      date: 'Start',
+      valMaxSharpe: filters.initialCapital,
+      valMinVol: filters.initialCapital,
+      valCustom: filters.initialCapital,
+      valEqual: filters.initialCapital,
+      benchVal: filters.initialCapital,
+    };
+
+    const activeTickers = activeFocusPortfolio === 'Portfolio A' ? tickersA : tickersB;
+    const activeMap = activeFocusPortfolio === 'Portfolio A' ? stockReturnsMapA : stockReturnsMapB;
+    const maxSharpeWeights = activeSummary.maxSharpe.weights;
+    const minVolWeights = activeSummary.minVol.weights;
+
+    const points = monthlyReturns.map((row, idx) => {
+      // Monthly return of Max Sharpe
+      let retMaxSharpe = 0;
+      let retMinVol = 0;
+      let retCustom = 0;
+      let retEqual = 0;
+
+      activeTickers.forEach((t) => {
+        const ret = typeof row[t] === 'number' ? (row[t] as number) : 0;
+        retMaxSharpe += ((maxSharpeWeights[t] || 0) / 100) * ret;
+        retMinVol += ((minVolWeights[t] || 0) / 100) * ret;
+        retCustom += ((activeWeights[t] || 10) / 100) * ret;
+        retEqual += 0.1 * ret;
+      });
+
+      const retBench = typeof row['NIFTY50.NS'] === 'number' ? (row['NIFTY50.NS'] as number) : 0;
+
+      runningMaxSharpe *= 1 + retMaxSharpe;
+      runningMinVol *= 1 + retMinVol;
+      runningCustom *= 1 + retCustom;
+      runningEqual *= 1 + retEqual;
+      runningBench *= 1 + retBench;
+
+      return {
+        date: row.date,
+        valMaxSharpe: Math.round(runningMaxSharpe),
+        valMinVol: Math.round(runningMinVol),
+        valCustom: Math.round(runningCustom),
+        valEqual: Math.round(runningEqual),
+        benchVal: Math.round(runningBench),
+      };
     });
 
-    const cov: number[][] = [];
-    for (let i = 0; i < tickers.length; i++) {
-      cov[i] = [];
-      for (let j = 0; j < tickers.length; j++) {
-        // Annualized cov estimate
-        cov[i][j] = i === j ? Math.pow(0.3, 2) : 0.02;
-      }
-    }
+    return [basePoint, ...points];
+  }, [filters.initialCapital, monthlyReturns, activeFocusPortfolio, activeSummary, activeWeights, tickersA, tickersB, stockReturnsMapA, stockReturnsMapB]);
 
-    return solveTargetReturnPortfolio(mu, cov, targetReturnInput / 100, maxStockWeight / 100);
-  }, [universeStocks, stockReturnsMap, tickers, targetReturnInput, maxStockWeight]);
+  const handleApplyOptimalWeights = (targetWeights: Record<string, number>, label: string) => {
+    if (activeOnChangeWeights) {
+      activeOnChangeWeights(targetWeights);
+      setNotification(`✓ Successfully applied ${label} to ${activeFocusPortfolio}. Updated weights are active across all pages!`);
+      setTimeout(() => setNotification(null), 5000);
+    }
+  };
+
+  const handleResetToEqualWeight = () => {
+    const eq: Record<string, number> = {};
+    const activeTickers = activeFocusPortfolio === 'Portfolio A' ? tickersA : tickersB;
+    activeTickers.forEach((t) => {
+      eq[t] = 10.0;
+    });
+    if (activeOnChangeWeights) {
+      activeOnChangeWeights(eq);
+      setNotification(`✓ Reset ${activeFocusPortfolio} to equal weight (10.0% each).`);
+      setTimeout(() => setNotification(null), 4000);
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 text-sky-600">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 text-blue-600">
             <TrendingUp className="w-3.5 h-3.5" />
             <span>Modern Portfolio Theory & Mean-Variance Optimization</span>
           </div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Markowitz Efficient Frontier, Minimum Volatility & Maximum Sharpe
+            Markowitz Efficient Frontier & Optimal Portfolio Showcase
           </h2>
           <div className="text-xs text-slate-500 mt-0.5">
-            Long-only constrained quadratic programming · Projecting feasibility clouds and optimal boundaries
+            Tangency Portfolio (Max Sharpe) · Global Minimum Volatility · Dual Portfolio Distribution Overlay
           </div>
         </div>
 
-        {/* Portfolio Focus Control */}
+        {/* View Mode Switcher: Dual Overlay vs Focus A vs Focus B */}
         <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-lg">
           <button
-            onClick={() => setSelectedPortfolio('Portfolio A')}
+            onClick={() => setViewMode('Dual Overlay')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
+              viewMode === 'Dual Overlay'
+                ? 'bg-blue-600 text-white font-semibold shadow-2xs'
+                : 'text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="w-3 h-3" />
+            <span>Dual Frontier Overlay</span>
+          </button>
+          <button
+            onClick={() => setViewMode('Portfolio A')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-              selectedPortfolio === 'Portfolio A'
+              viewMode === 'Portfolio A'
                 ? 'bg-orange-500 text-white font-semibold shadow-2xs'
                 : 'text-slate-700 hover:text-slate-900'
             }`}
           >
-            Portfolio A (High Risk)
+            Port A (High Risk)
           </button>
           <button
-            onClick={() => setSelectedPortfolio('Portfolio B')}
+            onClick={() => setViewMode('Portfolio B')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-              selectedPortfolio === 'Portfolio B'
+              viewMode === 'Portfolio B'
                 ? 'bg-teal-600 text-white font-semibold shadow-2xs'
                 : 'text-slate-700 hover:text-slate-900'
             }`}
           >
-            Portfolio B (Low Risk)
+            Port B (Low Risk)
           </button>
         </div>
       </div>
 
-      {/* Optimizer Parameters Controls Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-4 text-xs">
-        {/* Maximum Single Stock Weight Cap */}
-        <div className="flex items-center gap-3">
-          <span className="font-semibold text-slate-800">Max Asset Weight Bound:</span>
-          <div className="flex items-center gap-1">
-            {[25, 35, 50, 100].map((cap) => (
-              <button
-                key={cap}
-                onClick={() => setMaxStockWeight(cap)}
-                className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                  maxStockWeight === cap
-                    ? 'bg-slate-900 text-white shadow-2xs font-bold'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                {cap === 100 ? 'No Cap (100%)' : `≤ ${cap}%`}
-              </button>
-            ))}
-          </div>
+      {/* Notification Banner */}
+      {notification && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-900 flex items-center gap-2 shadow-2xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{notification}</span>
         </div>
+      )}
 
-        {/* Historical Regime Shift Selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-slate-500">Regime Window:</span>
-          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-md">
-            <button
-              onClick={() => setActiveRegime('5Year')}
-              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                activeRegime === '5Year'
-                  ? 'bg-white text-slate-900 shadow-2xs font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              5-Year Full Window
-            </button>
-            <button
-              onClick={() => setActiveRegime('Calm')}
-              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                activeRegime === 'Calm'
-                  ? 'bg-white text-slate-900 shadow-2xs font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Calm Regime
-            </button>
-            <button
-              onClick={() => setActiveRegime('Crisis')}
-              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                activeRegime === 'Crisis'
-                  ? 'bg-white text-slate-900 shadow-2xs font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Crisis Regime
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Interactive Efficient Frontier Plot */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Interactive Markowitz Efficient Frontier ({selectedPortfolio})
-            </h3>
-            <p className="text-xs text-slate-500">
-              1,000 Dirichlet-simulated feasible portfolios · Capital Allocation Line tangent to Maximum Sharpe
-            </p>
-          </div>
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              Min Vol: {optimizationSummary.minVol.volatilityPct}% σ | {optimizationSummary.minVol.expectedReturnPct}% R
-            </span>
-            <span className="text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
-              Max Sharpe: {optimizationSummary.maxSharpe.sharpeRatio} SR | {optimizationSummary.maxSharpe.expectedReturnPct}% R
-            </span>
-          </div>
-        </div>
-
-        <EfficientFrontierPlot
-          summary={optimizationSummary}
-          rf={filters.riskFreeRatePct / 100}
-        />
-      </div>
-
-      {/* Optimal Allocations Comparison Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-            Optimal Stock Weight Allocations ({selectedPortfolio})
-          </h3>
-          <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Quadratic solver converged (Residual norm &lt; 1e-6)
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left border-collapse font-mono">
-            <thead>
-              <tr className="bg-slate-100/70 text-slate-700 font-semibold border-b border-slate-200 font-sans">
-                <th className="p-3">Company</th>
-                <th className="p-3">Ticker</th>
-                <th className="p-3 text-right">Equal Weight</th>
-                <th className="p-3 text-right text-emerald-800 bg-emerald-50/50">
-                  Minimum Volatility Weight
-                </th>
-                <th className="p-3 text-right text-orange-800 bg-orange-50/50">
-                  Maximum Sharpe Weight
-                </th>
-                <th className="p-3 text-right">Max Sharpe Shift (vs Equal)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {universeStocks.map((s) => {
-                const eqW = 10.0;
-                const minVolW = optimizationSummary.minVol.weights[s.ticker] || 0;
-                const maxSharpeW = optimizationSummary.maxSharpe.weights[s.ticker] || 0;
-                const shift = maxSharpeW - eqW;
-
-                return (
-                  <tr key={s.ticker} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 font-sans font-medium text-slate-900">{s.name}</td>
-                    <td className="p-3 text-slate-500">{s.ticker.replace('.NS', '')}</td>
-                    <td className="p-3 text-right text-slate-600">{eqW.toFixed(1)}%</td>
-                    <td className="p-3 text-right font-bold text-emerald-800 bg-emerald-50/20">
-                      {minVolW.toFixed(1)}%
-                    </td>
-                    <td className="p-3 text-right font-bold text-orange-800 bg-orange-50/20">
-                      {maxSharpeW.toFixed(1)}%
-                    </td>
-                    <td
-                      className={`p-3 text-right font-semibold ${
-                        shift > 0 ? 'text-emerald-700' : shift < 0 ? 'text-rose-700' : 'text-slate-500'
-                      }`}
-                    >
-                      {shift > 0 ? `+${shift.toFixed(1)}%` : `${shift.toFixed(1)}%`}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t-2 border-slate-200 bg-slate-50 font-bold font-sans">
-              <tr>
-                <td className="p-3">Portfolio Total</td>
-                <td className="p-3 text-slate-500">100.0% Fully Invested</td>
-                <td className="p-3 text-right font-mono">100.0%</td>
-                <td className="p-3 text-right font-mono text-emerald-800">100.0%</td>
-                <td className="p-3 text-right font-mono text-orange-800">100.0%</td>
-                <td className="p-3 text-right font-mono text-slate-500">0.0%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-
-      {/* Target Return Solver Box */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-        <div className="flex items-center gap-2 mb-3">
-          <Target className="w-4 h-4 text-sky-600" />
-          <h3 className="text-sm font-bold text-slate-900">
-            Target Return Optimizer (Minimum Volatility for a Given Return Hurdle)
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-          <div>
-            <label className="block font-medium text-slate-700 mb-1">
-              Specify Required Expected Return Hurdle:
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={10}
-                max={45}
-                step={1}
-                value={targetReturnInput}
-                onChange={(e) => setTargetReturnInput(parseFloat(e.target.value))}
-                className="w-full accent-sky-600 h-1.5 bg-slate-200 rounded cursor-pointer"
-              />
-              <span className="font-mono text-sm font-bold text-sky-800 w-12 text-right">
-                {targetReturnInput}%
-              </span>
+      {/* DEDICATED OPTIMAL PORTFOLIO SHOWCASE CARD */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-slate-700 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-700/80 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-400/20 text-amber-300 rounded-xl border border-amber-400/30">
+              <Award className="w-6 h-6" />
             </div>
-            <div className="text-[11px] text-slate-500 mt-1">
-              Finds the portfolio on the efficient frontier that achieves at least this return with lowest volatility.
-            </div>
-          </div>
-
-          <div className="col-span-2 bg-slate-50 p-3.5 rounded-lg border border-slate-200 flex flex-col justify-center">
-            {targetResult.feasible ? (
-              <div className="space-y-1">
-                <div className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Target Return of {targetReturnInput}% is Feasible on the Frontier</span>
-                </div>
-                <div className="text-slate-600">
-                  Minimum achievable volatility:{' '}
-                  <span className="font-mono font-bold text-slate-900">
-                    {(targetResult.vol * 100).toFixed(1)}% p.a.
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-amber-800 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  Target return of {targetReturnInput}% exceeds current maximum asset expectations or bound constraints.
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  Markowitz Modern Portfolio Theory (1952)
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  Focus: {activeFocusPortfolio}
                 </span>
               </div>
-            )}
+              <h3 className="text-lg font-bold text-white tracking-tight mt-0.5">
+                Optimal Portfolio Showcase: Tangency & Minimum Volatility Solutions
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              onClick={() => handleApplyOptimalWeights(activeSummary.maxSharpe.weights, 'Max Sharpe Portfolio')}
+              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Apply Tangency (Max Sharpe)</span>
+            </button>
+            <button
+              onClick={() => handleApplyOptimalWeights(activeSummary.minVol.weights, 'Minimum Volatility Portfolio')}
+              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg border border-slate-600 transition-colors cursor-pointer"
+            >
+              Apply Min Vol
+            </button>
+          </div>
+        </div>
+
+        {/* Dual Showcase Comparison Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* 1. Tangency Max Sharpe */}
+          <div className="bg-slate-800/80 rounded-xl p-4 border border-amber-500/30 space-y-3">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Tangency Portfolio (Max Sharpe)
+              </span>
+              <span className="text-[10px] font-mono bg-amber-400/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-400/20">
+                Rf = {filters.riskFreeRatePct}%
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-slate-700/60 font-mono">
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Sharpe Ratio</div>
+                <div className="text-lg font-bold text-amber-300">{activeSummary.maxSharpe.sharpeRatio.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Exp. Return</div>
+                <div className="text-lg font-bold text-emerald-400">{activeSummary.maxSharpe.expectedReturnPct.toFixed(1)}%</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Ann. Volatility</div>
+                <div className="text-lg font-bold text-slate-200">{activeSummary.maxSharpe.volatilityPct.toFixed(1)}%</div>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-300">
+              <span className="font-semibold text-slate-400">Top Constituent Allocations:</span>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {Object.entries(activeSummary.maxSharpe.weights)
+                  .filter(([_, w]) => w > 3)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 4)
+                  .map(([ticker, w]) => (
+                    <span key={ticker} className="bg-slate-900/80 px-2 py-0.5 rounded border border-slate-700 text-[10px] font-mono">
+                      {TICKER_TO_STOCK[ticker]?.name || ticker}: <strong>{w.toFixed(0)}%</strong>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Global Minimum Volatility */}
+          <div className="bg-slate-800/80 rounded-xl p-4 border border-blue-500/30 space-y-3">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-blue-400 font-bold flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5" />
+                Global Minimum Volatility
+              </span>
+              <span className="text-[10px] font-mono bg-blue-400/10 text-blue-300 px-1.5 py-0.5 rounded border border-blue-400/20">
+                Min Variance
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-slate-700/60 font-mono">
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Sharpe Ratio</div>
+                <div className="text-lg font-bold text-blue-300">{activeSummary.minVol.sharpeRatio.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Exp. Return</div>
+                <div className="text-lg font-bold text-slate-200">{activeSummary.minVol.expectedReturnPct.toFixed(1)}%</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Ann. Volatility</div>
+                <div className="text-lg font-bold text-emerald-400">{activeSummary.minVol.volatilityPct.toFixed(1)}%</div>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-300">
+              <span className="font-semibold text-slate-400">Top Constituent Allocations:</span>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {Object.entries(activeSummary.minVol.weights)
+                  .filter(([_, w]) => w > 3)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 4)
+                  .map(([ticker, w]) => (
+                    <span key={ticker} className="bg-slate-900/80 px-2 py-0.5 rounded border border-slate-700 text-[10px] font-mono">
+                      {TICKER_TO_STOCK[ticker]?.name || ticker}: <strong>{w.toFixed(0)}%</strong>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Current User Custom Portfolio */}
+          <div className="bg-slate-800/80 rounded-xl p-4 border border-purple-500/30 space-y-3">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-purple-400 font-bold flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5" />
+                Current Custom Allocation
+              </span>
+              <span className="text-[10px] font-mono bg-purple-400/10 text-purple-300 px-1.5 py-0.5 rounded border border-purple-400/20">
+                User Defined
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-slate-700/60 font-mono">
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Sharpe Ratio</div>
+                <div className="text-lg font-bold text-purple-300">
+                  {activeSummary.currentCustom?.sharpeRatio.toFixed(2) || '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Exp. Return</div>
+                <div className="text-lg font-bold text-slate-200">
+                  {activeSummary.currentCustom?.expectedReturnPct.toFixed(1) || '—'}%
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 font-sans">Ann. Volatility</div>
+                <div className="text-lg font-bold text-slate-200">
+                  {activeSummary.currentCustom?.volatilityPct.toFixed(1) || '—'}%
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-300">
+              <span className="font-semibold text-slate-400">Optimization Efficiency Gap:</span>
+              <p className="mt-1 text-slate-300 text-[11px]">
+                {activeSummary.currentCustom && activeSummary.maxSharpe
+                  ? `Tangency yields +${(activeSummary.maxSharpe.sharpeRatio - activeSummary.currentCustom.sharpeRatio).toFixed(2)} higher Sharpe ratio than current weights.`
+                  : 'Slide weights in Portfolio Construction to test efficiency.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MARKOWITZ EFFICIENT FRONTIER PLOT (Dual Overlay or Single Portfolio) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-blue-600 flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5" />
+              <span>Mean-Variance Optimization Space</span>
+            </div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+              {viewMode === 'Dual Overlay'
+                ? 'Dual Portfolio Distribution & Markowitz Efficient Frontier Overlay'
+                : `Markowitz Efficient Frontier: ${viewMode}`}
+            </h3>
+            <p className="text-xs text-slate-500">
+              Risk (Annualized Volatility σ) vs Reward (Annualized Expected Return E[R])
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500 font-medium">Max Stock Cap:</span>
+            <select
+              value={maxStockWeight}
+              onChange={(e) => setMaxStockWeight(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-mono font-medium text-slate-800 cursor-pointer"
+            >
+              <option value={20}>20% Cap</option>
+              <option value={35}>35% Cap (Default)</option>
+              <option value={50}>50% Cap</option>
+              <option value={100}>100% (Unconstrained)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Plotly Dual / Single Frontier Plot */}
+        <div className="w-full">
+          <PlotlyChart
+            data={[
+              // 1. Portfolio A Feasible Cloud (if Dual or Port A)
+              ...(viewMode === 'Dual Overlay' || viewMode === 'Portfolio A'
+                ? [
+                    {
+                      x: summaryA.feasiblePortfolios.map((p) => p.volatilityPct),
+                      y: summaryA.feasiblePortfolios.map((p) => p.expectedReturnPct),
+                      mode: 'markers' as const,
+                      type: 'scatter' as const,
+                      name: 'Port A Feasible Cloud',
+                      marker: { color: '#fed7aa', size: 4, opacity: 0.45 },
+                      hovertemplate: '<b>Port A Simulation</b><br>Vol: %{x:.1f}%<br>Ret: %{y:.1f}%<extra></extra>',
+                    },
+                    {
+                      x: summaryA.frontierCurve.map((p) => p.volatilityPct),
+                      y: summaryA.frontierCurve.map((p) => p.expectedReturnPct),
+                      mode: 'lines' as const,
+                      type: 'scatter' as const,
+                      name: 'Port A Efficient Frontier',
+                      line: { color: '#f97316', width: 3 },
+                      hovertemplate: '<b>Port A Frontier</b><br>Vol: %{x:.1f}%<br>Ret: %{y:.1f}%<extra></extra>',
+                    },
+                    {
+                      x: [summaryA.maxSharpe.volatilityPct],
+                      y: [summaryA.maxSharpe.expectedReturnPct],
+                      mode: 'markers+text' as const,
+                      type: 'scatter' as const,
+                      name: 'Port A Tangency (Max Sharpe)',
+                      text: ['Port A Max Sharpe'],
+                      textposition: 'top right' as const,
+                      marker: { color: '#ea580c', size: 12, symbol: 'star' as any },
+                    },
+                    {
+                      x: [summaryA.minVol.volatilityPct],
+                      y: [summaryA.minVol.expectedReturnPct],
+                      mode: 'markers+text' as const,
+                      type: 'scatter' as const,
+                      name: 'Port A Min Vol',
+                      text: ['Port A Min Vol'],
+                      textposition: 'bottom right' as const,
+                      marker: { color: '#c2410c', size: 10, symbol: 'square' as any },
+                    },
+                    ...(summaryA.currentCustom
+                      ? [
+                          {
+                            x: [summaryA.currentCustom.volatilityPct],
+                            y: [summaryA.currentCustom.expectedReturnPct],
+                            mode: 'markers+text' as const,
+                            type: 'scatter' as const,
+                            name: 'Port A Custom Allocation',
+                            text: ['Port A Current'],
+                            textposition: 'top left' as const,
+                            marker: { color: '#f43f5e', size: 11, symbol: 'diamond' as any },
+                          },
+                        ]
+                      : []),
+                  ]
+                : []),
+
+              // 2. Portfolio B Feasible Cloud (if Dual or Port B)
+              ...(viewMode === 'Dual Overlay' || viewMode === 'Portfolio B'
+                ? [
+                    {
+                      x: summaryB.feasiblePortfolios.map((p) => p.volatilityPct),
+                      y: summaryB.feasiblePortfolios.map((p) => p.expectedReturnPct),
+                      mode: 'markers' as const,
+                      type: 'scatter' as const,
+                      name: 'Port B Feasible Cloud',
+                      marker: { color: '#99f6e4', size: 4, opacity: 0.45 },
+                      hovertemplate: '<b>Port B Simulation</b><br>Vol: %{x:.1f}%<br>Ret: %{y:.1f}%<extra></extra>',
+                    },
+                    {
+                      x: summaryB.frontierCurve.map((p) => p.volatilityPct),
+                      y: summaryB.frontierCurve.map((p) => p.expectedReturnPct),
+                      mode: 'lines' as const,
+                      type: 'scatter' as const,
+                      name: 'Port B Efficient Frontier',
+                      line: { color: '#0d9488', width: 3 },
+                      hovertemplate: '<b>Port B Frontier</b><br>Vol: %{x:.1f}%<br>Ret: %{y:.1f}%<extra></extra>',
+                    },
+                    {
+                      x: [summaryB.maxSharpe.volatilityPct],
+                      y: [summaryB.maxSharpe.expectedReturnPct],
+                      mode: 'markers+text' as const,
+                      type: 'scatter' as const,
+                      name: 'Port B Tangency (Max Sharpe)',
+                      text: ['Port B Max Sharpe'],
+                      textposition: 'top left' as const,
+                      marker: { color: '#0f766e', size: 12, symbol: 'star' as any },
+                    },
+                    {
+                      x: [summaryB.minVol.volatilityPct],
+                      y: [summaryB.minVol.expectedReturnPct],
+                      mode: 'markers+text' as const,
+                      type: 'scatter' as const,
+                      name: 'Port B Min Vol',
+                      text: ['Port B Min Vol'],
+                      textposition: 'bottom left' as const,
+                      marker: { color: '#115e59', size: 10, symbol: 'square' as any },
+                    },
+                    ...(summaryB.currentCustom
+                      ? [
+                          {
+                            x: [summaryB.currentCustom.volatilityPct],
+                            y: [summaryB.currentCustom.expectedReturnPct],
+                            mode: 'markers+text' as const,
+                            type: 'scatter' as const,
+                            name: 'Port B Custom Allocation',
+                            text: ['Port B Current'],
+                            textposition: 'top right' as const,
+                            marker: { color: '#0284c7', size: 11, symbol: 'diamond' as any },
+                          },
+                        ]
+                      : []),
+                  ]
+                : []),
+            ]}
+            layout={{
+              height: 420,
+              xaxis: {
+                title: { text: 'Annualized Volatility (%) → Risk' },
+                ticksuffix: '%',
+                gridcolor: '#f1f5f9',
+                zeroline: false,
+              },
+              yaxis: {
+                title: { text: 'Annualized Expected Return (%)' },
+                ticksuffix: '%',
+                gridcolor: '#f1f5f9',
+                zeroline: false,
+              },
+            }}
+          />
+        </div>
+
+        {/* Dual Distribution Interpretation */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div>
+            <strong className="text-orange-900 block mb-1">Portfolio A (High Risk Universe):</strong>
+            <p className="text-slate-600 leading-relaxed">
+              Frontier spans higher expected returns (up to ~{summaryA.frontierCurve[summaryA.frontierCurve.length - 1]?.expectedReturnPct.toFixed(0)}%) but requires bearing substantial volatility (min vol is ~{summaryA.minVol.volatilityPct.toFixed(1)}%). Tangency Sharpe is {summaryA.maxSharpe.sharpeRatio.toFixed(2)}.
+            </p>
+          </div>
+          <div>
+            <strong className="text-teal-950 block mb-1">Portfolio B (Low Risk Universe):</strong>
+            <p className="text-slate-600 leading-relaxed">
+              Frontier is shifted sharply to the left, achieving global minimum volatility of only ~{summaryB.minVol.volatilityPct.toFixed(1)}% with dependable expected return of ~{summaryB.minVol.expectedReturnPct.toFixed(1)}%. Tangency Sharpe reaches {summaryB.maxSharpe.sharpeRatio.toFixed(2)}.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* MARKOWITZ RESULTS FOR PRICES / TIME PERIOD GRAPH (Dynamic 5-Year Equity Backtest) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
+              <LineChart className="w-3.5 h-3.5" />
+              <span>Historical Price & Equity Growth Over Time</span>
+            </div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+              Markowitz Optimal Portfolios Backtest: Cumulative Capital Growth
+            </h3>
+            <p className="text-xs text-slate-500">
+              Tracing ₹15,00,000 capital compounded over the 60-month historical period (2021–2026) across Markowitz allocations
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-mono bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700">
+            <span>Base Capital: <strong>₹15,00,000</strong></span>
+            <span>·</span>
+            <span>Final Tangency: <strong>{formatINR(markowitzTimeSeries[markowitzTimeSeries.length - 1].valMaxSharpe)}</strong></span>
+          </div>
+        </div>
+
+        {/* Plotly Markowitz Cumulative Wealth Line Chart */}
+        <div className="w-full">
+          <PlotlyChart
+            data={[
+              {
+                x: markowitzTimeSeries.map((d) => d.date),
+                y: markowitzTimeSeries.map((d) => d.valMaxSharpe),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Markowitz Max Sharpe (Tangency)',
+                line: { color: '#f59e0b', width: 2.8 },
+                hovertemplate: '<b>Max Sharpe</b>: %{y:$,.0f}<br>Date: %{x}<extra></extra>',
+              },
+              {
+                x: markowitzTimeSeries.map((d) => d.date),
+                y: markowitzTimeSeries.map((d) => d.valMinVol),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Markowitz Minimum Volatility',
+                line: { color: '#0d9488', width: 2.5 },
+                hovertemplate: '<b>Min Vol</b>: %{y:$,.0f}<br>Date: %{x}<extra></extra>',
+              },
+              {
+                x: markowitzTimeSeries.map((d) => d.date),
+                y: markowitzTimeSeries.map((d) => d.valCustom),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Current Custom Allocation',
+                line: { color: '#6366f1', width: 2.2, dash: 'dash' },
+                hovertemplate: '<b>Current Custom</b>: %{y:$,.0f}<br>Date: %{x}<extra></extra>',
+              },
+              {
+                x: markowitzTimeSeries.map((d) => d.date),
+                y: markowitzTimeSeries.map((d) => d.valEqual),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Equal Weight (10% Each)',
+                line: { color: '#64748b', width: 1.8 },
+                hovertemplate: '<b>Equal Weight</b>: %{y:$,.0f}<br>Date: %{x}<extra></extra>',
+              },
+              {
+                x: markowitzTimeSeries.map((d) => d.date),
+                y: markowitzTimeSeries.map((d) => d.benchVal),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'NIFTY 50 Benchmark',
+                line: { color: '#94a3b8', width: 1.5, dash: 'dot' },
+                hovertemplate: '<b>NIFTY 50</b>: %{y:$,.0f}<br>Date: %{x}<extra></extra>',
+              },
+            ]}
+            layout={{
+              height: 350,
+              yaxis: {
+                title: { text: 'Portfolio Capital Value (INR ₹)' },
+                gridcolor: '#f1f5f9',
+                zeroline: false,
+              },
+              xaxis: {
+                title: { text: 'Historical Observation Date (Monthly)' },
+                gridcolor: '#f8fafc',
+                showgrid: true,
+              },
+            }}
+          />
+        </div>
+
+        {/* Backtest Findings Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs pt-1">
+          <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+            <span className="text-[11px] text-amber-900 font-semibold block">Max Sharpe Tangency</span>
+            <span className="font-mono text-base font-bold text-amber-950">
+              {formatINR(markowitzTimeSeries[markowitzTimeSeries.length - 1].valMaxSharpe)}
+            </span>
+            <span className="text-[10px] text-amber-700 block mt-0.5">
+              +{(((markowitzTimeSeries[markowitzTimeSeries.length - 1].valMaxSharpe - filters.initialCapital) / filters.initialCapital) * 100).toFixed(1)}% Cumulative
+            </span>
+          </div>
+
+          <div className="bg-teal-50 p-3 rounded-lg border border-teal-200">
+            <span className="text-[11px] text-teal-900 font-semibold block">Minimum Volatility</span>
+            <span className="font-mono text-base font-bold text-teal-950">
+              {formatINR(markowitzTimeSeries[markowitzTimeSeries.length - 1].valMinVol)}
+            </span>
+            <span className="text-[10px] text-teal-700 block mt-0.5">
+              +{(((markowitzTimeSeries[markowitzTimeSeries.length - 1].valMinVol - filters.initialCapital) / filters.initialCapital) * 100).toFixed(1)}% Cumulative
+            </span>
+          </div>
+
+          <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+            <span className="text-[11px] text-indigo-900 font-semibold block">Current Custom Weights</span>
+            <span className="font-mono text-base font-bold text-indigo-950">
+              {formatINR(markowitzTimeSeries[markowitzTimeSeries.length - 1].valCustom)}
+            </span>
+            <span className="text-[10px] text-indigo-700 block mt-0.5">
+              Live weights synced
+            </span>
+          </div>
+
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <span className="text-[11px] text-slate-700 font-semibold block">NIFTY 50 Benchmark</span>
+            <span className="font-mono text-base font-bold text-slate-900">
+              {formatINR(markowitzTimeSeries[markowitzTimeSeries.length - 1].benchVal)}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              Market baseline growth
+            </span>
           </div>
         </div>
       </div>

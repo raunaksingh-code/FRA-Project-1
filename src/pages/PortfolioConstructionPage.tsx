@@ -1,11 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StockStatistics,
   PortfolioPerformanceMetrics,
   GlobalFilterState,
+  MonthlyReturnRow,
 } from '../types';
-import { formatINR } from '../utils/math';
-import { RotateCcw, PieChart, Info, ShieldCheck, Check } from 'lucide-react';
+import { formatINR, extractReturns, computeRiskDriverAttributions } from '../utils/math';
+import {
+  PORTFOLIO_A_STOCKS,
+  PORTFOLIO_B_STOCKS,
+  FINANCIAL_SECTOR_STOCKS,
+  RISK_METHODOLOGY_JUSTIFICATIONS,
+  TICKER_TO_STOCK,
+} from '../data/universe';
+import {
+  RotateCcw,
+  PieChart,
+  Info,
+  ShieldCheck,
+  Check,
+  AlertTriangle,
+  HelpCircle,
+  Activity,
+  Layers,
+  Flame,
+  Scale,
+  Landmark,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 
 interface PortfolioConstructionProps {
   stockStats: StockStatistics[];
@@ -18,6 +41,7 @@ interface PortfolioConstructionProps {
   filters: GlobalFilterState;
   rolling12A: { date: string; rollingReturnPct: number; rollingVolPct: number }[];
   rolling12B: { date: string; rollingReturnPct: number; rollingVolPct: number }[];
+  monthlyReturns?: MonthlyReturnRow[];
 }
 
 export function PortfolioConstructionPage({
@@ -31,8 +55,11 @@ export function PortfolioConstructionPage({
   filters,
   rolling12A,
   rolling12B,
+  monthlyReturns = [],
 }: PortfolioConstructionProps) {
   const [activePortfolioTab, setActivePortfolioTab] = useState<'Portfolio A' | 'Portfolio B'>('Portfolio A');
+  const [isMethodologyOpen, setIsMethodologyOpen] = useState<boolean>(true);
+  const [showFinancialsTest, setShowFinancialsTest] = useState<boolean>(false);
 
   const stocksA = stockStats.filter((s) => s.portfolio === 'Portfolio A');
   const stocksB = stockStats.filter((s) => s.portfolio === 'Portfolio B');
@@ -70,6 +97,16 @@ export function PortfolioConstructionPage({
     setWeights(norm);
   };
 
+  // Compute Risk Driver Attribution (MCR and PRC) live from monthly returns
+  const riskDriverAttributions = useMemo(() => {
+    if (!monthlyReturns || monthlyReturns.length === 0) return [];
+    const stockReturnsMap: Record<string, number[]> = {};
+    currentStocks.forEach((s) => {
+      stockReturnsMap[s.ticker] = extractReturns(monthlyReturns, s.ticker);
+    });
+    return computeRiskDriverAttributions(currentWeights, stockReturnsMap, 1.0);
+  }, [monthlyReturns, currentStocks, currentWeights]);
+
   // Sector Exposure aggregation
   const sectorExposure: Record<string, number> = {};
   currentStocks.forEach((s) => {
@@ -77,44 +114,302 @@ export function PortfolioConstructionPage({
     sectorExposure[s.sector] = (sectorExposure[s.sector] || 0) + w;
   });
 
+  // Top risk driver callout
+  const topRiskDriver = riskDriverAttributions[0];
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Portfolio Construction & Dynamic Weighting
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Scale className="w-3.5 h-3.5 text-blue-600" />
+            <span>Portfolio Construction & Risk Parameter Framework</span>
           </div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Constituent Equities, Sector Allocation & Capital Sizing
+            Constituent Equities, Risk Classifications & Dynamic Weighting
           </h2>
           <div className="text-xs text-slate-500 mt-0.5">
-            Initial Allocation: 10 Equities · Equal Weight 10.0% (₹1,50,000 per stock) · Total ₹15 Lakh
+            Initial Allocation: 10 Equities · Equal Weight 10.0% (₹1,50,000 per stock) · Total Capital ₹15,00,000
           </div>
         </div>
 
-        {/* Portfolio Tab Switcher */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-lg">
+        {/* Portfolio Tab Switcher & Financials Toggle */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setActivePortfolioTab('Portfolio A')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-              activePortfolioTab === 'Portfolio A'
-                ? 'bg-orange-500 text-white shadow-2xs font-semibold'
-                : 'text-slate-700 hover:text-slate-900'
+            onClick={() => setShowFinancialsTest(!showFinancialsTest)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer ${
+              showFinancialsTest
+                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
             }`}
           >
-            Portfolio A (High Risk)
+            <Landmark className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Financials Test Suite</span>
           </button>
+
+          <div className="flex items-center gap-1 p-1 bg-slate-200/80 rounded-lg">
+            <button
+              onClick={() => setActivePortfolioTab('Portfolio A')}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                activePortfolioTab === 'Portfolio A'
+                  ? 'bg-orange-500 text-white shadow-2xs font-semibold'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              Portfolio A (High Risk)
+            </button>
+            <button
+              onClick={() => setActivePortfolioTab('Portfolio B')}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                activePortfolioTab === 'Portfolio B'
+                  ? 'bg-teal-600 text-white shadow-2xs font-semibold'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              Portfolio B (Low Risk)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* RISK PARAMETER DISCLOSURE & SELECTION RATIONALE BANNER */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-blue-50 text-blue-700 rounded-lg mt-0.5 shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Risk Parameter Identification & Classification Framework
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded bg-blue-100 text-blue-800">
+                  Modern Portfolio Theory Primitives
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Which asset is risky and what defines risk? Each portfolio constituent is categorized based on objective statistical and structural parameters:
+                <strong> Systematic Beta (β &gt; 1.25 vs &lt; 0.95)</strong>, 
+                <strong> Realized Volatility (σ &gt; 30% vs &lt; 20%)</strong>, 
+                <strong> Historical Max Drawdown</strong>, and 
+                <strong> Sector Demand Cyclicality</strong>.
+              </p>
+            </div>
+          </div>
+
           <button
-            onClick={() => setActivePortfolioTab('Portfolio B')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-              activePortfolioTab === 'Portfolio B'
-                ? 'bg-teal-600 text-white shadow-2xs font-semibold'
-                : 'text-slate-700 hover:text-slate-900'
-            }`}
+            onClick={() => setIsMethodologyOpen(!isMethodologyOpen)}
+            className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors shrink-0 cursor-pointer"
           >
-            Portfolio B (Low Risk)
+            <span>{isMethodologyOpen ? 'Hide Methodology Rationale' : 'Why These Parameters?'}</span>
+            {isMethodologyOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
+        </div>
+
+        {/* Expanded Institutional Methodology Rationale */}
+        {isMethodologyOpen && (
+          <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            {/* 1. Why Selected Parameters */}
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200/80">
+              <strong className="font-semibold text-slate-900 block mb-1.5 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-blue-600" />
+                Why We Selected These Parameters:
+              </strong>
+              <ul className="space-y-1.5 text-slate-600 leading-normal">
+                <li>
+                  <strong className="text-slate-800">Market Beta (β & β⁻):</strong> Measures non-diversifiable systematic sensitivity to macro shocks.
+                </li>
+                <li>
+                  <strong className="text-slate-800">Annual Volatility (σ):</strong> Reflects total return dispersion and market clearing uncertainty.
+                </li>
+                <li>
+                  <strong className="text-slate-800">Covariance Matrix (Σ):</strong> Dictates diversification benefits across the portfolio.
+                </li>
+                <li>
+                  <strong className="text-slate-800">Risk Contribution (PRC):</strong> Pinpoints which specific stocks drive portfolio variance.
+                </li>
+              </ul>
+            </div>
+
+            {/* 2. Why Other Parameters Are Excluded */}
+            <div className="bg-amber-50/70 p-3.5 rounded-lg border border-amber-200/70">
+              <strong className="font-semibold text-amber-950 block mb-1.5 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                Why Other Parameters Were Excluded:
+              </strong>
+              <ul className="space-y-1.5 text-amber-900/90 leading-normal">
+                <li>
+                  <strong className="text-amber-950">Why not P/E or P/B ratios?</strong> Accounting multiples are backward-looking valuation markers, not market risk measures. Cheap "value trap" stocks often collapse violently in crises, whereas high P/E staples (HUL, Nestlé) exhibit ultra-low volatility.
+                </li>
+                <li>
+                  <strong className="text-amber-950">Why not single-tail VaR alone?</strong> Static VaR ignores fat-tail kurtosis and covariance.
+                </li>
+              </ul>
+            </div>
+
+            {/* 3. Why Low Risk Assets Are Classified As Low Risk */}
+            <div className="bg-emerald-50/70 p-3.5 rounded-lg border border-emerald-200/70">
+              <strong className="font-semibold text-emerald-950 block mb-1.5 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                Why Low-Risk Equities Are Low Risk:
+              </strong>
+              <ul className="space-y-1.5 text-emerald-900/90 leading-normal">
+                <li>
+                  <strong className="text-emerald-950">Inelastic Staples:</strong> Non-cyclical demand for food, soap, and medicines (HUL, Nestlé, Sun Pharma).
+                </li>
+                <li>
+                  <strong className="text-emerald-950">Regulated Utilities:</strong> CERC cost-plus guaranteed post-tax return on equity (Power Grid, NTPC).
+                </li>
+                <li>
+                  <strong className="text-emerald-950">Negligible Debt:</strong> Fortress balance sheets with minimal debt insulate from interest rate spikes.
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* FINANCIAL STOCKS TESTING SUITE (Conditional Modal/Card) */}
+      {showFinancialsTest && (
+        <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-5 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-indigo-700" />
+              <div>
+                <h3 className="text-sm font-bold text-indigo-950">
+                  Financial Sector Stocks Testing Suite
+                </h3>
+                <p className="text-xs text-indigo-800">
+                  Evaluate how Indian banking & NBFC stocks perform across risk metrics compared to diversified portfolios.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowFinancialsTest(false)}
+              className="text-xs text-indigo-700 hover:text-indigo-900 font-semibold cursor-pointer"
+            >
+              ✕ Close Test Suite
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse bg-white rounded-lg border border-indigo-200 overflow-hidden">
+              <thead>
+                <tr className="bg-indigo-100/70 text-indigo-950 font-semibold border-b border-indigo-200">
+                  <th className="p-3">Financial Institution</th>
+                  <th className="p-3">Ticker</th>
+                  <th className="p-3">Sub-Sector</th>
+                  <th className="p-3">Risk Classification</th>
+                  <th className="p-3 text-right">Market Beta</th>
+                  <th className="p-3 text-right">Vol Profile</th>
+                  <th className="p-3">Key Risk Driver & Balance Sheet Rationale</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-indigo-100">
+                {FINANCIAL_SECTOR_STOCKS.map((stock) => (
+                  <tr key={stock.ticker} className="hover:bg-indigo-50/50">
+                    <td className="p-3 font-medium text-slate-900">{stock.name}</td>
+                    <td className="p-3 font-mono text-slate-500">{stock.ticker.replace('.NS', '')}</td>
+                    <td className="p-3 text-slate-600">{stock.sector}</td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          stock.riskCategory === 'Low Risk'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : stock.riskCategory === 'High Risk'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {stock.riskCategory}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-900">
+                      {stock.benchmarkBeta.toFixed(2)}
+                    </td>
+                    <td className="p-3 text-right font-mono text-slate-700">
+                      {stock.volatilityProfile}
+                    </td>
+                    <td className="p-3 text-slate-600 text-[11px] max-w-xs">
+                      {stock.primaryRiskDriver}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="text-xs text-indigo-900 bg-white/80 p-3 rounded-lg border border-indigo-100 flex items-start gap-2">
+            <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <p>
+              <strong>Financial Sector Finding:</strong> Private lenders with massive CASA deposits (HDFC Bank: β=0.88, Kotak Bank: β=0.85) provide defensive ballast with lower volatility (~20%), while retail consumer NBFCs (Bajaj Finance: β=1.32, vol ~32%) experience pronounced credit cycle beta.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* RISK DRIVER ATTRIBUTION CARD: Which stocks drive the risk graph? */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-purple-700 flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-purple-600" />
+              <span>Risk Driver Attribution Analysis</span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Which Stocks Drive the Risk Graph? (Marginal & Percentage Risk Contribution)
+            </h3>
+            <p className="text-xs text-slate-500">
+              Calculated using the full annualized covariance matrix: PRC_i = [w_i * (Σ w)_i] / σ_p^2 × 100%
+            </p>
+          </div>
+
+          {topRiskDriver && (
+            <div className="px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-900 self-start sm:self-auto">
+              <strong>Top Risk Contributor:</strong> {topRiskDriver.name} accounts for{' '}
+              <span className="font-bold font-mono text-purple-800">{topRiskDriver.percentageRiskContributionPct}%</span>{' '}
+              of total portfolio risk at {topRiskDriver.weightPct}% weight!
+            </div>
+          )}
+        </div>
+
+        {/* Visual Risk Driver Breakdown Bars */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
+          {riskDriverAttributions.slice(0, 5).map((driver, idx) => (
+            <div
+              key={driver.ticker}
+              className={`p-3 rounded-lg border ${
+                idx === 0
+                  ? 'bg-rose-50/80 border-rose-200'
+                  : idx === 1
+                  ? 'bg-orange-50/80 border-orange-200'
+                  : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <div className="flex justify-between items-start text-xs mb-1">
+                <span className="font-bold text-slate-900 truncate" title={driver.name}>
+                  {driver.name}
+                </span>
+                <span className="font-mono font-bold text-rose-700">
+                  {driver.percentageRiskContributionPct}% Risk
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden my-1.5">
+                <div
+                  className={`h-1.5 rounded-full ${
+                    idx === 0 ? 'bg-rose-600' : idx === 1 ? 'bg-orange-500' : 'bg-slate-600'
+                  }`}
+                  style={{ width: `${Math.min(100, driver.percentageRiskContributionPct * 3.5)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] text-slate-500">
+                <span>Weight: {driver.weightPct}%</span>
+                <span>Beta: {driver.beta.toFixed(2)}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -135,7 +430,7 @@ export function PortfolioConstructionPage({
           </span>
           {Math.abs(totalWeight - 100) > 0.1 && (
             <span className="text-amber-700 text-xs">
-              Weights will be normalized to 100% for metric calculations.
+              Weights will be normalized to 100% across all portfolio analytics and frontier calculations.
             </span>
           )}
         </div>
@@ -160,14 +455,19 @@ export function PortfolioConstructionPage({
         </div>
       </div>
 
-      {/* Constituents Table with Weight Sliders */}
+      {/* Constituents Table with Weight Sliders & Parameter Classifications */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
         <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-            {activePortfolioTab} Constituents (10 Indian Equities)
-          </h3>
-          <span className="text-[11px] text-slate-500">
-            Use sliders to adjust individual allocations
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              {activePortfolioTab} Constituents (10 Indian Equities)
+            </h3>
+            <span className="text-[11px] text-slate-500">
+              Explicit Risk Classification, Market Beta, Volatility, and Why Each Stock is Classified
+            </span>
+          </div>
+          <span className="text-xs font-mono text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded">
+            Portfolio Volatility: {currentMetrics.annualizedVolatilityPct.toFixed(1)}% p.a.
           </span>
         </div>
 
@@ -176,28 +476,41 @@ export function PortfolioConstructionPage({
             <thead>
               <tr className="bg-slate-100/70 text-slate-700 font-semibold border-b border-slate-200">
                 <th className="p-3">Company</th>
-                <th className="p-3">Ticker</th>
+                <th className="p-3">Risk Category</th>
                 <th className="p-3">Sector</th>
-                <th className="p-3 w-48">Weight Allocation</th>
-                <th className="p-3 text-right">Capital Allocated</th>
-                <th className="p-3 text-right">CAGR Return</th>
-                <th className="p-3 text-right">Ann. Volatility</th>
-                <th className="p-3 text-right">Nifty Beta</th>
-                <th className="p-3 text-right">95% VaR</th>
-                <th className="p-3 text-right">95% ES</th>
+                <th className="p-3 w-44">Weight Allocation</th>
+                <th className="p-3 text-right">Capital Sizing</th>
+                <th className="p-3 text-right">CAGR</th>
+                <th className="p-3 text-right">Ann. Vol</th>
+                <th className="p-3 text-right">Beta (β)</th>
+                <th className="p-3 text-right">Risk Contrib (PRC)</th>
+                <th className="p-3">Primary Risk Driver & Deciding Rationale</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-mono">
               {currentStocks.map((s) => {
                 const w = currentWeights[s.ticker] || 0;
                 const allocatedRupees = (w / 100) * filters.initialCapital;
+                const stockInfo = TICKER_TO_STOCK[s.ticker];
+                const riskDriver = riskDriverAttributions.find((d) => d.ticker === s.ticker);
 
                 return (
                   <tr key={s.ticker} className="hover:bg-slate-50/70 transition-colors">
                     <td className="p-3 font-sans font-medium text-slate-900 whitespace-nowrap">
-                      {s.name}
+                      <div>{s.name}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">{s.ticker.replace('.NS', '')}</div>
                     </td>
-                    <td className="p-3 text-slate-500">{s.ticker.replace('.NS', '')}</td>
+                    <td className="p-3 font-sans">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
+                          activePortfolioTab === 'Portfolio A'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-teal-100 text-teal-800'
+                        }`}
+                      >
+                        {stockInfo?.riskCategory || (activePortfolioTab === 'Portfolio A' ? 'High Risk' : 'Low Risk')}
+                      </span>
+                    </td>
                     <td className="p-3 font-sans text-slate-600 whitespace-nowrap">{s.sector}</td>
                     <td className="p-3 font-sans">
                       <div className="flex items-center gap-2">
@@ -208,11 +521,11 @@ export function PortfolioConstructionPage({
                           step={1}
                           value={w}
                           onChange={(e) => handleWeightChange(s.ticker, parseFloat(e.target.value))}
-                          className={`w-28 accent-slate-800 h-1.5 bg-slate-200 rounded cursor-pointer ${
+                          className={`w-24 accent-slate-800 h-1.5 bg-slate-200 rounded cursor-pointer ${
                             activePortfolioTab === 'Portfolio A' ? 'accent-orange-500' : 'accent-teal-600'
                           }`}
                         />
-                        <span className="font-mono text-xs font-semibold text-slate-900 w-10 text-right">
+                        <span className="font-mono text-xs font-semibold text-slate-900 w-8 text-right">
                           {w.toFixed(0)}%
                         </span>
                       </div>
@@ -230,14 +543,16 @@ export function PortfolioConstructionPage({
                     <td className="p-3 text-right text-slate-800">
                       {s.annualizedVolPct.toFixed(1)}%
                     </td>
-                    <td className="p-3 text-right text-slate-600">
+                    <td className="p-3 text-right text-slate-900 font-bold">
                       {s.beta.toFixed(2)}
                     </td>
-                    <td className="p-3 text-right text-rose-700">
-                      {s.var95Pct.toFixed(1)}%
+                    <td className="p-3 text-right font-bold text-purple-700">
+                      {riskDriver ? `${riskDriver.percentageRiskContributionPct}%` : '—'}
                     </td>
-                    <td className="p-3 text-right text-rose-800">
-                      {s.es95Pct.toFixed(1)}%
+                    <td className="p-3 font-sans text-[11px] text-slate-600 max-w-xs">
+                      <p className="line-clamp-2" title={stockInfo?.riskRationale || stockInfo?.description}>
+                        {stockInfo?.primaryRiskDriver || stockInfo?.riskRationale || stockInfo?.description}
+                      </p>
                     </td>
                   </tr>
                 );
@@ -295,7 +610,7 @@ export function PortfolioConstructionPage({
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                Rolling 12-Month Performance Comparison
+                Rolling 12-Month Performance Dynamics
               </h3>
               <p className="text-xs text-slate-500">
                 Rolling 1-year cumulative returns over time (Portfolio A vs Portfolio B)
@@ -303,7 +618,7 @@ export function PortfolioConstructionPage({
             </div>
           </div>
 
-          {/* Rolling SVG Chart with Dynamic Bounds & Hover */}
+          {/* Rolling SVG Chart */}
           {(() => {
             const allRets = [
               ...rolling12A.map((d) => d.rollingReturnPct),
@@ -399,7 +714,7 @@ export function PortfolioConstructionPage({
                     />
                   )}
 
-                  {/* X Axis dates at start and end */}
+                  {/* X Axis dates */}
                   {rolling12A.length > 0 && (
                     <>
                       <text
@@ -446,8 +761,7 @@ export function PortfolioConstructionPage({
               Rebalancing Assumption:
             </div>
             <p>
-              Current mode: <strong>{filters.rebalanceFrequency}</strong>.
-              Under monthly rebalancing, target weights are restored at the beginning of each calendar month. Under Buy & Hold, allocations drift proportionally to cumulative price appreciation.
+              Current mode: <strong>{filters.rebalanceFrequency}</strong>. Under monthly rebalancing, target weights are restored at the beginning of each calendar month. Under Buy & Hold, allocations drift proportionally to cumulative price appreciation.
             </p>
           </div>
         </div>
