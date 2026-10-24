@@ -35,8 +35,10 @@ export function StressTestingPage({
 }: StressTestingProps) {
   const [comparableMode, setComparableMode] = useState<boolean>(true);
   const [activeCrisisId, setActiveCrisisId] = useState<string>('covid');
+  const [tableDisplayMode, setTableDisplayMode] = useState<'focused' | 'all'>('focused');
 
   const comparisonData = HISTORICAL_RISK_COMPARISON;
+
 
   // 4 HISTORICAL CRISIS EVENTS DATA WITH DETAILED STOCK-WISE PERFORMANCES
   const CRISIS_EVENTS: CrisisEventInfo[] = [
@@ -189,13 +191,22 @@ export function StressTestingPage({
 
   const currentCrisis = CRISIS_EVENTS.find((c) => c.id === activeCrisisId) || CRISIS_EVENTS[0];
 
+  // Dynamically filter comparison data when in focused mode so clicking any crisis at top updates table values
+  const displayedComparisonData = useMemo(() => {
+    if (tableDisplayMode === 'focused') {
+      const filtered = comparisonData.filter((r) => r.periodKey === activeCrisisId);
+      return filtered.length > 0 ? filtered : comparisonData;
+    }
+    return comparisonData;
+  }, [comparisonData, tableDisplayMode, activeCrisisId]);
+
   // Sort stock performance ascending by return (worst to best) for the bar chart
   const sortedStockPerf = useMemo(() => {
     return [...currentCrisis.stockPerformances].sort((a, b) => a.returnPct - b.returnPct);
   }, [currentCrisis]);
 
   const handleDownloadHistoricalComparison = () => {
-    const csvRows = comparisonData.map((row) => ({
+    const csvRows = displayedComparisonData.map((row) => ({
       Period: row.periodName,
       Portfolio: row.portfolio,
       'Start Date': row.startDate,
@@ -215,8 +226,9 @@ export function StressTestingPage({
       'Cumulative Return (%)': row.cumulativeReturnPct,
       'CAGR Return (%)': row.cagrReturnPct,
     }));
-    exportToCSV(csvRows, 'historical_risk_comparison');
+    exportToCSV(csvRows, `historical_stress_${activeCrisisId}`);
   };
+
 
   return (
     <div className="space-y-6">
@@ -450,20 +462,57 @@ export function StressTestingPage({
         </div>
       </div>
 
-      {/* MASTER 3-PERIOD HISTORICAL RISK COMPARISON TABLE (Existing Table 1) */}
+      {/* MASTER HISTORICAL RISK & DOWNSIDE PERFORMANCE MASTER MATRIX (TABLE 1) */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Table 1: 3-Period Historical Risk & Downside Performance Master Matrix
-            </h3>
-            <span className="text-[11px] text-slate-500">
-              Calm Reference Period vs COVID-19 Acute Crisis vs Recent 5-Year Sample
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                Table 1: Historical Risk & Downside Performance Master Matrix
+              </h3>
+              <span className="px-2 py-0.5 text-[10px] rounded font-mono font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                Active Crisis: {currentCrisis.name}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 block mt-0.5">
+              {tableDisplayMode === 'focused'
+                ? `Dynamically filtered to active scenario (${currentCrisis.period}). Click other crises above to switch values.`
+                : 'Comparing Calm Period, All 4 Crisis Shocks & 5-Year Sample (Active scenario highlighted)'}
             </span>
           </div>
-          <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 self-start sm:self-auto">
-            Target Return: {filters.riskFreeRatePct}% p.a. · Factor: √252 (Daily)
-          </span>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View Mode Switcher */}
+            <div className="flex items-center gap-1 p-1 bg-slate-200/80 rounded-lg">
+              <button
+                onClick={() => setTableDisplayMode('focused')}
+                className={`px-2.5 py-1 text-xs rounded transition-colors cursor-pointer font-medium ${
+                  tableDisplayMode === 'focused'
+                    ? 'bg-rose-600 text-white font-semibold shadow-2xs'
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+                title="Only show the crisis currently selected at the top"
+              >
+                Focus Active Crisis
+              </button>
+              <button
+                onClick={() => setTableDisplayMode('all')}
+                className={`px-2.5 py-1 text-xs rounded transition-colors cursor-pointer font-medium ${
+                  tableDisplayMode === 'all'
+                    ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+                title="Show all 6 historical regimes with active scenario highlighted"
+              >
+                Show All 6 Regimes
+              </button>
+            </div>
+
+            <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 self-start sm:self-auto">
+              Target Return: {filters.riskFreeRatePct}% p.a. · Factor: √252
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -486,63 +535,80 @@ export function StressTestingPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {comparisonData.map((row, idx) => (
-                <tr
-                  key={`${row.periodKey}-${row.portfolio}`}
-                  className={`hover:bg-slate-50/70 transition-colors ${
-                    idx % 2 === 1 ? 'border-b-2 border-slate-200/60' : ''
-                  }`}
-                >
-                  <td className="p-3 font-sans font-medium text-slate-900">
-                    <div>{row.periodName}</div>
-                    <div className="text-[10px] text-slate-500 font-mono">{row.dateRange}</div>
-                  </td>
-                  <td className="p-3 font-sans">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                        row.portfolio === 'Portfolio A'
-                          ? 'bg-orange-100 text-orange-800'
-                          : 'bg-teal-100 text-teal-800'
+              {displayedComparisonData.map((row, idx) => {
+                const isActive = row.periodKey === activeCrisisId;
+                return (
+                  <tr
+                    key={`${row.periodKey}-${row.portfolio}`}
+                    onClick={() => {
+                      if (CRISIS_EVENTS.some((c) => c.id === row.periodKey)) {
+                        setActiveCrisisId(row.periodKey);
+                      }
+                    }}
+                    className={`transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-rose-50/80 border-l-4 border-l-rose-500 font-semibold'
+                        : 'hover:bg-slate-50/70'
+                    } ${idx % 2 === 1 ? 'border-b-2 border-slate-200/60' : ''}`}
+                  >
+                    <td className="p-3 font-sans font-medium text-slate-900">
+                      <div className="flex items-center gap-1.5">
+                        <span>{row.periodName}</span>
+                        {isActive && (
+                          <span className="px-1.5 py-0.5 bg-rose-600 text-white rounded text-[9px] font-mono font-bold">
+                            ★ Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono">{row.dateRange}</div>
+                    </td>
+                    <td className="p-3 font-sans">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          row.portfolio === 'Portfolio A'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-teal-100 text-teal-800'
+                        }`}
+                      >
+                        {row.portfolio}
+                      </span>
+                    </td>
+                    <td className="p-3 text-slate-600">
+                      {row.includedStocksCount}/10
+                    </td>
+                    <td className="p-3 text-right text-slate-700">{row.alignedObsCount}</td>
+                    <td className="p-3 text-right text-slate-700">{row.negativeMarketObsCount}</td>
+                    <td className="p-3 text-right font-bold text-slate-900">
+                      {row.annualizedVolPct.toFixed(1)}%
+                    </td>
+                    <td className="p-3 text-right text-slate-700">
+                      {row.ordinaryBeta.toFixed(2)}
+                    </td>
+                    <td className="p-3 text-right font-bold text-rose-700">
+                      {row.downsideBeta.toFixed(2)}
+                    </td>
+                    <td className="p-3 text-right text-slate-900 font-bold">
+                      {row.sortinoRatio.toFixed(2)}
+                    </td>
+                    <td className="p-3 text-right text-rose-700">
+                      {row.var95Pct.toFixed(2)}%
+                    </td>
+                    <td className="p-3 text-right text-rose-800">
+                      {row.es95Pct.toFixed(2)}%
+                    </td>
+                    <td className="p-3 text-right font-bold text-red-700">
+                      {row.maxDrawdownPct.toFixed(1)}%
+                    </td>
+                    <td
+                      className={`p-3 text-right font-bold ${
+                        row.cumulativeReturnPct >= 0 ? 'text-emerald-700' : 'text-red-700'
                       }`}
                     >
-                      {row.portfolio}
-                    </span>
-                  </td>
-                  <td className="p-3 text-slate-600">
-                    {row.includedStocksCount}/10
-                  </td>
-                  <td className="p-3 text-right text-slate-700">{row.alignedObsCount}</td>
-                  <td className="p-3 text-right text-slate-700">{row.negativeMarketObsCount}</td>
-                  <td className="p-3 text-right font-bold text-slate-900">
-                    {row.annualizedVolPct.toFixed(1)}%
-                  </td>
-                  <td className="p-3 text-right text-slate-700">
-                    {row.ordinaryBeta.toFixed(2)}
-                  </td>
-                  <td className="p-3 text-right font-bold text-rose-700">
-                    {row.downsideBeta.toFixed(2)}
-                  </td>
-                  <td className="p-3 text-right text-slate-900 font-bold">
-                    {row.sortinoRatio.toFixed(2)}
-                  </td>
-                  <td className="p-3 text-right text-rose-700">
-                    {row.var95Pct.toFixed(2)}%
-                  </td>
-                  <td className="p-3 text-right text-rose-800">
-                    {row.es95Pct.toFixed(2)}%
-                  </td>
-                  <td className="p-3 text-right font-bold text-red-700">
-                    {row.maxDrawdownPct.toFixed(1)}%
-                  </td>
-                  <td
-                    className={`p-3 text-right font-bold ${
-                      row.cumulativeReturnPct >= 0 ? 'text-emerald-700' : 'text-red-700'
-                    }`}
-                  >
-                    {row.cumulativeReturnPct.toFixed(1)}%
-                  </td>
-                </tr>
-              ))}
+                      {row.cumulativeReturnPct > 0 ? `+${row.cumulativeReturnPct.toFixed(1)}%` : `${row.cumulativeReturnPct.toFixed(1)}%`}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -550,3 +616,4 @@ export function StressTestingPage({
     </div>
   );
 }
+

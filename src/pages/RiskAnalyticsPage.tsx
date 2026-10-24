@@ -45,6 +45,9 @@ interface RiskAnalyticsProps {
   drawdownB: number[];
   filters: GlobalFilterState;
   onChangeFilters: (f: Partial<GlobalFilterState>) => void;
+  weightsA?: Record<string, number>;
+  weightsB?: Record<string, number>;
+  benchmarkReturns?: number[];
 }
 
 export function RiskAnalyticsPage({
@@ -57,7 +60,11 @@ export function RiskAnalyticsPage({
   drawdownB,
   filters,
   onChangeFilters,
+  weightsA = Object.fromEntries(PORTFOLIO_A_STOCKS.map((s) => [s.ticker, 10.0])),
+  weightsB = Object.fromEntries(PORTFOLIO_B_STOCKS.map((s) => [s.ticker, 10.0])),
+  benchmarkReturns = [],
 }: RiskAnalyticsProps) {
+
   const [selectedPortfolio, setSelectedPortfolio] = useState<'Portfolio A' | 'Portfolio B'>('Portfolio A');
   const [expandedMetric, setExpandedMetric] = useState<string | null>('downsideBeta');
   const [sortinoTargetReturn, setSortinoTargetReturn] = useState<number>(filters.riskFreeRatePct);
@@ -334,118 +341,150 @@ export function RiskAnalyticsPage({
       {/* DOWNSIDE RISK MASTER CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Downside Beta Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-700">Downside Beta (β⁻)</span>
-            <span className="text-[10px] bg-rose-50 text-rose-700 font-mono px-1.5 py-0.5 rounded border border-rose-200">
-              Down Market Days
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
-            <div>
-              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A (High Risk)</div>
-              <div className="text-xl font-bold text-slate-900">{downsideBetaA.downsideBeta.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
-                Ord β: {ordinaryBetaA.beta.toFixed(2)} (+{(downsideBetaA.downsideBeta - ordinaryBetaA.beta).toFixed(2)})
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+              <span className="font-semibold text-slate-700">Downside Beta (β⁻)</span>
+              <span className="text-[10px] bg-rose-50 text-rose-700 font-mono px-1.5 py-0.5 rounded border border-rose-200">
+                Down Market Days
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
+              <div>
+                <div className="text-[10px] text-orange-600 font-bold uppercase">Port A (High Risk)</div>
+                <div className="text-xl font-bold text-slate-900">{downsideBetaA.downsideBeta.toFixed(2)}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  Ord β: {ordinaryBetaA.beta.toFixed(2)} (+{(downsideBetaA.downsideBeta - ordinaryBetaA.beta).toFixed(2)})
+                </div>
+              </div>
+              <div className="border-l border-slate-100 pl-3">
+                <div className="text-[10px] text-teal-600 font-bold uppercase">Port B (Low Risk)</div>
+                <div className="text-xl font-bold text-slate-900">{downsideBetaB.downsideBeta.toFixed(2)}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  Ord β: {ordinaryBetaB.beta.toFixed(2)} ({(downsideBetaB.downsideBeta - ordinaryBetaB.beta).toFixed(2)})
+                </div>
               </div>
             </div>
-            <div className="border-l border-slate-100 pl-3">
-              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B (Low Risk)</div>
-              <div className="text-xl font-bold text-slate-900">{downsideBetaB.downsideBeta.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
-                Ord β: {ordinaryBetaB.beta.toFixed(2)} ({(downsideBetaB.downsideBeta - ordinaryBetaB.beta).toFixed(2)})
-              </div>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span>Downside Asymmetry:</span>
+              <span className="font-semibold text-rose-700">Port A Amplifies Market Falls</span>
             </div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span>Downside Asymmetry:</span>
-            <span className="font-semibold text-rose-700">Port A Amplifies Market Falls</span>
+          <div className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-dashed border-slate-200 bg-slate-50/70 -mx-4 -mb-4 p-3 rounded-b-xl leading-relaxed">
+            <strong className="text-slate-700 block font-sans">Theory & Formulation:</strong>
+            <span className="font-mono text-slate-600">β⁻ = Cov(R_p, R_m | R_m &lt; 0) / Var(R_m | R_m &lt; 0)</span>.
+            Measures co-movement specifically when the benchmark drops. When β⁻ &gt; Ordinary β, the portfolio amplifies market crashes.
           </div>
         </div>
 
         {/* Sortino Ratio Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-700">Sortino Ratio</span>
-            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-mono px-1.5 py-0.5 rounded border border-indigo-200">
-              Hurdle: {sortinoTargetReturn}%
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
-            <div>
-              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
-              <div className="text-xl font-bold text-slate-900">{sortinoDailyA.sortino.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
-                Downside σ: {(sortinoDailyA.downsideDevAnnual * 100).toFixed(1)}%
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+              <span className="font-semibold text-slate-700">Sortino Ratio</span>
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 font-mono px-1.5 py-0.5 rounded border border-indigo-200">
+                Hurdle: {sortinoTargetReturn}%
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
+              <div>
+                <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
+                <div className="text-xl font-bold text-slate-900">{sortinoDailyA.sortino.toFixed(2)}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  Downside σ: {sortinoDailyA.downsideDevAnnual.toFixed(1)}%
+                </div>
+              </div>
+              <div className="border-l border-slate-100 pl-3">
+                <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
+                <div className="text-xl font-bold text-slate-900">{sortinoDailyB.sortino.toFixed(2)}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  Downside σ: {sortinoDailyB.downsideDevAnnual.toFixed(1)}%
+                </div>
               </div>
             </div>
-            <div className="border-l border-slate-100 pl-3">
-              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
-              <div className="text-xl font-bold text-slate-900">{sortinoDailyB.sortino.toFixed(2)}</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
-                Downside σ: {(sortinoDailyB.downsideDevAnnual * 100).toFixed(1)}%
-              </div>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span>Harmful Volatility:</span>
+              <span className="font-semibold text-emerald-700">
+                Port B Has {(((sortinoDailyA.downsideDevAnnual - sortinoDailyB.downsideDevAnnual) / sortinoDailyA.downsideDevAnnual) * 100).toFixed(0)}% Lower Downside σ
+              </span>
             </div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span>Harmful Volatility:</span>
-            <span className="font-semibold text-emerald-700">Port B Has 48% Lower Downside σ</span>
+          <div className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-dashed border-slate-200 bg-slate-50/70 -mx-4 -mb-4 p-3 rounded-b-xl leading-relaxed">
+            <strong className="text-slate-700 block font-sans">Theory & Formulation:</strong>
+            <span className="font-mono text-slate-600">Sortino = (R_annual - Hurdle) / σ_downside</span>.
+            Unlike Sharpe which penalizes upside gains, downside deviation (σ_d) only integrates volatility that drops below the {sortinoTargetReturn}% hurdle.
           </div>
         </div>
 
         {/* 95% Historical VaR Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-700">95% Monthly VaR</span>
-            <span className="text-[10px] bg-amber-50 text-amber-800 font-mono px-1.5 py-0.5 rounded border border-amber-200">
-              1-in-20 Month Loss
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
-            <div>
-              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
-              <div className="text-xl font-bold text-rose-700">-{metricsA.monthlyVar95Pct.toFixed(1)}%</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
-                95% ES: -{metricsA.monthlyEs95Pct.toFixed(1)}%
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+              <span className="font-semibold text-slate-700">95% Monthly VaR</span>
+              <span className="text-[10px] bg-amber-50 text-amber-700 font-mono px-1.5 py-0.5 rounded border border-amber-200">
+                α = 5% Tail
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
+              <div>
+                <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
+                <div className="text-xl font-bold text-rose-700">-{metricsA.monthlyVar95Pct.toFixed(1)}%</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  95% ES: -{metricsA.monthlyEs95Pct.toFixed(1)}%
+                </div>
+              </div>
+              <div className="border-l border-slate-100 pl-3">
+                <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
+                <div className="text-xl font-bold text-teal-800">-{metricsB.monthlyVar95Pct.toFixed(1)}%</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  95% ES: -{metricsB.monthlyEs95Pct.toFixed(1)}%
+                </div>
               </div>
             </div>
-            <div className="border-l border-slate-100 pl-3">
-              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
-              <div className="text-xl font-bold text-teal-800">-{metricsB.monthlyVar95Pct.toFixed(1)}%</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">
-                95% ES: -{metricsB.monthlyEs95Pct.toFixed(1)}%
-              </div>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span>Tail Loss Severity:</span>
+              <span className="font-semibold text-rose-700">
+                Port A VaR is {(metricsA.monthlyVar95Pct / metricsB.monthlyVar95Pct).toFixed(1)}x Deeper
+              </span>
             </div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span>Tail Risk Difference:</span>
-            <span className="font-semibold text-rose-700">Port A Loss Is ~2.3x Deeper</span>
+          <div className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-dashed border-slate-200 bg-slate-50/70 -mx-4 -mb-4 p-3 rounded-b-xl leading-relaxed">
+            <strong className="text-slate-700 block font-sans">Theory & Formulation:</strong>
+            <span className="font-mono text-slate-600">VaR_95% = -Quantile(R, 0.05); ES_95% = E[-R | R ≤ -VaR]</span>.
+            VaR marks the threshold loss breached in the worst 5% of months; Expected Shortfall (ES) measures the average loss when that barrier is broken.
           </div>
         </div>
 
         {/* Max Historical Drawdown Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-700">Max Historical Drawdown</span>
-            <span className="text-[10px] bg-red-50 text-red-700 font-mono px-1.5 py-0.5 rounded border border-red-200">
-              Peak-to-Trough
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
-            <div>
-              <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
-              <div className="text-xl font-bold text-red-700">-{metricsA.maximumDrawdownPct.toFixed(1)}%</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Severe capital impairment</div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+              <span className="font-semibold text-slate-700">Max Historical Drawdown</span>
+              <span className="text-[10px] bg-red-50 text-red-700 font-mono px-1.5 py-0.5 rounded border border-red-200">
+                Peak-to-Trough
+              </span>
             </div>
-            <div className="border-l border-slate-100 pl-3">
-              <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
-              <div className="text-xl font-bold text-emerald-800">-{metricsB.maximumDrawdownPct.toFixed(1)}%</div>
-              <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Cushioned drawdown</div>
+            <div className="grid grid-cols-2 gap-3 mt-2 border-t border-slate-100 pt-2 font-mono">
+              <div>
+                <div className="text-[10px] text-orange-600 font-bold uppercase">Port A</div>
+                <div className="text-xl font-bold text-red-700">-{metricsA.maximumDrawdownPct.toFixed(1)}%</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Severe capital impairment</div>
+              </div>
+              <div className="border-l border-slate-100 pl-3">
+                <div className="text-[10px] text-teal-600 font-bold uppercase">Port B</div>
+                <div className="text-xl font-bold text-emerald-800">-{metricsB.maximumDrawdownPct.toFixed(1)}%</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-sans">Cushioned drawdown</div>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span>Capital Protection:</span>
+              <span className="font-semibold text-emerald-700">Port B Preserved 82%+ Value</span>
             </div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span>Capital Protection:</span>
-            <span className="font-semibold text-emerald-700">Port B Preserved 82%+ Value</span>
+          <div className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-dashed border-slate-200 bg-slate-50/70 -mx-4 -mb-4 p-3 rounded-b-xl leading-relaxed">
+            <strong className="text-slate-700 block font-sans">Theory & Formulation:</strong>
+            <span className="font-mono text-slate-600">MDD = min_t [(Wealth_t - Peak_t) / Peak_t]</span>.
+            The worst cumulative paper loss suffered from any high-water mark before recovery. Represents the true liquidation and psychological pain threshold.
           </div>
         </div>
       </div>
@@ -597,6 +636,22 @@ export function RiskAnalyticsPage({
             </p>
           </div>
         </div>
+
+        {/* Normal Distribution Theory Callout */}
+        <div className="text-[11px] text-slate-600 bg-blue-50/60 border border-blue-200/70 p-3.5 rounded-xl leading-relaxed space-y-1">
+          <strong className="text-blue-950 font-bold flex items-center gap-1.5 text-xs">
+            <Info className="w-3.5 h-3.5 text-blue-700" />
+            <span>Theoretical Framework: Normal Gaussian Distribution (Bachelier &amp; Markowitz)</span>
+          </strong>
+          <p>
+            The Gaussian probability density function is parameterized by{' '}
+            <code className="bg-blue-100/70 px-1 py-0.5 rounded text-blue-950 font-mono text-[10px]">
+              f(x) = (1 / (σ √(2π))) · e^(-(x - μ)² / (2σ²))
+            </code>
+            . Under strict normality, risk is symmetric: 68.3% of outcomes lie within μ ± 1σ, 95.4% within μ ± 2σ, and 99.7% within μ ± 3σ.
+            In real financial markets, returns deviate from Gaussian assumptions due to <strong>fat tails (leptokurtosis)</strong> and <strong>crash-induced skewness</strong>. Relying solely on volatility (σ) dangerously underestimates the true probability of extreme 3-sigma and 4-sigma market drawdowns.
+          </p>
+        </div>
       </div>
 
       {/* MASTER DESCRIPTIVE STATISTICS TABLE */}
@@ -709,10 +764,50 @@ export function RiskAnalyticsPage({
             </tbody>
           </table>
         </div>
+
+        {/* Statistical Moments Theoretical Framework Callout */}
+        <div className="p-4 bg-slate-50/80 border-t border-slate-200">
+          <div className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-blue-600" />
+            <span>Theoretical Framework: Four Statistical Moments of Portfolio Risk</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-slate-600">
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+              <strong className="text-slate-900 block font-semibold text-xs">1st Moment: Mean (μ)</strong>
+              <span className="font-mono text-[10px] text-slate-500 block mb-1">E[R] = ∑ R_i / n</span>
+              <p className="text-[11px] leading-relaxed">
+                Measures central location (expected return). Critical for baseline compounding, but offers zero insight into volatility, variance, or downside ruin.
+              </p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+              <strong className="text-slate-900 block font-semibold text-xs">2nd Moment: Volatility (σ)</strong>
+              <span className="font-mono text-[10px] text-slate-500 block mb-1">σ = √[E(R - μ)²] × √12</span>
+              <p className="text-[11px] leading-relaxed">
+                Measures dispersion around the mean. Standard deviation treats upside multi-baggers and downside crashes identically, failing to distinguish between desirable and destructive volatility.
+              </p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+              <strong className="text-slate-900 block font-semibold text-xs">3rd Moment: Skewness (S)</strong>
+              <span className="font-mono text-[10px] text-slate-500 block mb-1">S = E[(R - μ)³] / σ³</span>
+              <p className="text-[11px] leading-relaxed">
+                Measures asymmetry. Negative skew indicates sudden severe crashes ('picking up pennies in front of a steamroller'); positive skew reflects lottery-like right-tail growth.
+              </p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+              <strong className="text-slate-900 block font-semibold text-xs">4th Moment: Kurtosis (K)</strong>
+              <span className="font-mono text-[10px] text-slate-500 block mb-1">K = E[(R - μ)⁴] / σ⁴ - 3</span>
+              <p className="text-[11px] leading-relaxed">
+                Measures tail fatness (leptokurtosis). Positive excess kurtosis (K &gt; 0) mathematically proves that black-swan shocks occur exponentially more often than Gaussian bell curves assume.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
+
 
       {/* STOCK BETA COMPARISON GRAPH (Low vs High Risk Constituents vs Market Beta 1.0) */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5" />
@@ -800,6 +895,25 @@ export function RiskAnalyticsPage({
             Clear structural bifurcation: Every Portfolio A stock has β &gt; 1.28; every Portfolio B stock has β &lt; 0.95.
           </span>
         </div>
+
+        {/* Systematic Beta Theory Callout */}
+        <div className="text-[11px] text-slate-600 bg-indigo-50/60 border border-indigo-200/70 p-3.5 rounded-xl leading-relaxed space-y-1">
+          <strong className="text-indigo-950 font-bold flex items-center gap-1.5 text-xs">
+            <Info className="w-3.5 h-3.5 text-indigo-700" />
+            <span>Theoretical Framework: Capital Asset Pricing Model (CAPM) Systematic Beta</span>
+          </strong>
+          <p>
+            Under the Capital Asset Pricing Model (Sharpe, Lintner, Mossin), systematic beta represents undiversifiable co-movement with broad macroeconomic market shocks:{' '}
+            <code className="bg-indigo-100/70 px-1 py-0.5 rounded text-indigo-950 font-mono text-[10px]">
+              β_i = Cov(R_i, R_m) / Var(R_m) = ρ_i,m · (σ_i / σ_m)
+            </code>
+            . Total variance decomposes into systematic market variance and idiosyncratic firm risk ({' '}
+            <code className="bg-indigo-100/70 px-1 py-0.5 rounded text-indigo-950 font-mono text-[10px]">
+              σ_i² = β_i² · σ_m² + σ_ε²
+            </code>
+            ). Stocks with β &gt; 1.25 systematically amplify market pullbacks, whereas low-beta defensives (β &lt; 0.95) dampen portfolio drawdown depth.
+          </p>
+        </div>
       </div>
 
       {/* INDUSTRY / SECTOR DESCRIPTIVE STATISTICS TABLE */}
@@ -852,6 +966,17 @@ export function RiskAnalyticsPage({
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Sector Systematic Risk Theory Callout */}
+        <div className="p-4 bg-slate-50/80 border-t border-slate-200 text-xs text-slate-600 leading-relaxed">
+          <strong className="text-slate-900 font-bold flex items-center gap-1.5 mb-1 text-xs">
+            <Info className="w-3.5 h-3.5 text-blue-600" />
+            <span>Theoretical Framework: Business Cycle Cyclicality &amp; Operating Leverage</span>
+          </strong>
+          <p className="text-[11px]">
+            Sector betas reflect fundamental microeconomic structures: companies with high <strong>operating leverage</strong> (heavy fixed capex, e.g. shipbuilding, manufacturing, renewable power) experience disproportionate operating profit swings when macroeconomic demand fluctuates, generating high betas (β &gt; 1.3). Conversely, companies with inelastic consumer demand (FMCG staples, pharmaceuticals) or regulated tariff rate-bases (power utilities) generate durable, bond-like cash flows that resist economic contractions, producing defensive betas (β &lt; 0.95).
+          </p>
         </div>
       </div>
 
@@ -918,6 +1043,17 @@ export function RiskAnalyticsPage({
               },
             }}
           />
+        </div>
+
+        {/* Rolling Volatility Clustering Theory Callout */}
+        <div className="text-[11px] text-slate-600 bg-amber-50/60 border border-amber-200/70 p-3.5 rounded-xl leading-relaxed space-y-1">
+          <strong className="text-amber-950 font-bold flex items-center gap-1.5 text-xs">
+            <Info className="w-3.5 h-3.5 text-amber-700" />
+            <span>Theoretical Framework: Volatility Clustering &amp; ARCH/GARCH Regimes (Engle 1982)</span>
+          </strong>
+          <p>
+            Classical static standard deviation assumes volatility is constant across time (homoscedasticity). In contrast, Robert Engle's Nobel prize-winning <strong>Autoregressive Conditional Heteroskedasticity (ARCH/GARCH)</strong> framework and Mandelbrot's fractal market observations prove that financial markets exhibit <strong>volatility clustering</strong>: tranquil periods cluster together, while sudden geopolitical or liquidity shocks trigger persistent volatility bursts where large standard deviation swings follow large swings. Rolling 30-day volatility (σ_t × √252) captures these dynamic stress regimes that static full-period averages conceal.
+          </p>
         </div>
       </div>
     </div>

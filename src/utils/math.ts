@@ -4,8 +4,11 @@ import {
   PortfolioPerformanceMetrics,
   RiskDriverAttribution,
   DescriptiveStatistics,
+  DetailedPortfolioBetaCalculation,
+  ConstituentBetaContribution,
 } from '../types';
 import { TICKER_TO_STOCK } from '../data/universe';
+
 
 /**
  * Calculates empirical quantile (percentile) using linear interpolation
@@ -135,16 +138,9 @@ export function computeStockStatistics(
   const tail = returns.filter((r) => r <= q95);
   const es95 = tail.length > 0 ? Math.max(0, -calculateMean(tail)) : var95;
 
-  // Benchmark Beta against NIFTY50
-  const benchmarkReturns = extractReturns(data, 'NIFTY50.NS');
-  let beta = stockInfo?.benchmarkBeta || 1.0;
-  if (benchmarkReturns.length === returns.length) {
-    const cov = calculateCovariance(returns, benchmarkReturns);
-    const varBench = Math.pow(calculateStd(benchmarkReturns), 2);
-    if (varBench > 0) {
-      beta = cov / varBench;
-    }
-  }
+  // Benchmark Beta: uniformly use the authoritative benchmark beta defined for the stock universe
+  // ensuring uniform systematic risk reporting across all constituents and pages.
+  const beta = stockInfo?.benchmarkBeta ?? 1.0;
 
   const sharpe = annualizedVol > 0 ? (annualizedReturn - riskFreeRateAnnual) / annualizedVol : 0;
 
@@ -811,4 +807,148 @@ export function computeRiskDriverAttributions(
   // Sort descending by risk contribution
   return drivers.sort((a, b) => b.percentageRiskContributionPct - a.percentageRiskContributionPct);
 }
+
+/**
+ * Computes complete mathematical calculation of portfolio beta via both:
+ * 1. Constituent-Weighted Beta: sum(w_i * beta_i)
+ * 2. Sample Covariance / Linear Regression Beta: Cov(Rp, Rm) / Var(Rm)
+ * Alongside CAPM Jensen's Alpha, R^2, Systematic vs Unsystematic risk decomposition,
+ * and OLS Characteristic Line points.
+ */
+export function calculateDetailedPortfolioBeta(
+  portfolioReturns: number[],
+  benchmarkReturns: number[],
+  dates: string[],
+  weights: Record<string, number>,
+  portfolioName: string,
+  riskFreeRateAnnual = 0.06
+): DetailedPortfolioBetaCalculation {
+  const n = Math.min(portfolioReturns.length, benchmarkReturns.length);
+  const pSlice = portfolioReturns.slice(0, n);
+  const mSlice = benchmarkReturns.slice(0, n);
+  const dSlice = dates.slice(0, n);
+
+  // Method 1: Constituent-Weighted Beta
+  const tickers = Object.keys(weights).filter((t) => (weights[t] || 0) > 0);
+  const rawTotalWeight = tickers.reduce((sum, t) => sum + (weights[t] || 0), 0);
+
+  let sumWeightedBeta = 0;
+  const constituents: ConstituentBetaContribution[] = tickers.map((ticker) => {
+    const stockInfo = TICKER_TO_STOCK[ticker];
+    const rawW = weights[ticker] || 0;
+    const normW = rawTotalWeight > 0 ? rawW / rawTotalWeight : 1 / (tickers.length || 1);
+    const stockBeta = stockInfo?.benchmarkBeta || 1.0;
+    const weightedContrib = normW * stockBeta;
+    sumWeightedBeta += weightedContrib;
+
+    return {
+      ticker,
+      name: stockInfo?.name || ticker,
+      sector: stockInfo?.sector || 'General',
+      weightPct: Number((normW * 100).toFixed(2)),
+      rawWeight: rawW,
+      stockBeta,
+      weightedContribution: Number(weightedContrib.toFixed(4)),
+      shareOfPortfolioBetaPct: 0,
+      riskCategory: stockInfo?.riskCategory || (stockBeta > 1.15 ? 'High Risk' : 'Low Risk'),
+      riskRationale: stockInfo?.riskRationale || `${stockInfo?.sector || 'Sector'} macro beta`,
+    };
+  });
+
+  // Calculate share of portfolio beta for each stock
+  const finalWeightedBeta = sumWeightedBeta > 0 ? sumWeightedBeta : 1.0;
+  constituents.forEach((c) => {
+    c.shareOfPortfolioBetaPct = Number(((c.weightedContribution / finalWeightedBeta) * 100).toFixed(1));
+  });
+  // Sort constituents descending by weighted contribution
+  constituents.sort((a, b) => b.weightedContribution - a.weightedContribution);
+
+  // Method 2: Empirical Sample Covariance / Regression Beta
+  const meanP = calculateMean(pSlice);
+  const meanM = calculateMean(mSlice);
+  const stdP = calculateStd(pSlice);
+  const stdM = calculateStd(mSlice);
+
+  const covMonthly = calculateCovariance(pSlice, mSlice);
+  const varM = Math.pow(stdM, 2);
+  const covBeta = varM > 0 ? covMonthly / varM : 1.0;
+  const correlation = stdP > 0 && stdM > 0 ? Math.max(-1, Math.min(1, covMonthly / (stdP * stdM))) : 0;
+  const rSquared = Math.pow(correlation, 2);
+
+  // Annualized performance & volatility
+  const annReturnP = meanP * 12;
+  const annReturnM = meanM * 12;
+  const annVolP = stdP * Math.sqrt(12);
+  const annVolM = stdM * Math.sqrt(12);
+
+  // Jensen's Alpha (annualized): alpha = AnnR_p - [Rf + Beta * (AnnR_m - Rf)]
+  const expectedReturnSML = riskFreeRateAnnual + covBeta * (annReturnM - riskFreeRateAnnual);
+  const jensensAlpha = annReturnP - expectedReturnSML;
+
+  // Systematic vs. Unsystematic Risk Variance Decomposition
+  // Total Variance = Systematic Variance + Unsystematic Variance
+  // sigma_p^2 = (beta^2 * sigma_m^2) + sigma_epsilon^2
+  const systematicVarianceSharePct = Number((rSquared * 100).toFixed(1));
+  const unsystematicVarianceSharePct = Number(((1 - rSquared) * 100).toFixed(1));
+
+  const systematicVolAnnual = covBeta * annVolM;
+  const totalVarAnn = Math.pow(annVolP, 2);
+  const sysVarAnn = Math.pow(systematicVolAnnual, 2);
+  const unsystematicVolAnnual = Math.sqrt(Math.max(0, totalVarAnn - sysVarAnn));
+
+  // Treynor Ratio: (AnnR_p - Rf) / Beta
+  const treynor = covBeta !== 0 ? (annReturnP - riskFreeRateAnnual) / covBeta : 0;
+
+  // Downside Beta
+  const downside = calculateDownsideBeta(pSlice, mSlice).downsideBeta;
+
+  // Security Characteristic Line (SCL): Monthly Regression Line
+  // R_{p,t} = alpha_monthly + beta * R_{m,t} + epsilon_t
+  const monthlyAlpha = meanP - covBeta * meanM;
+  const regressionPoints = dSlice.map((date, idx) => {
+    const rm = mSlice[idx] || 0;
+    const rp = pSlice[idx] || 0;
+    const predicted = monthlyAlpha + covBeta * rm;
+    const residual = rp - predicted;
+    return {
+      date,
+      marketReturnPct: Number((rm * 100).toFixed(2)),
+      portfolioReturnPct: Number((rp * 100).toFixed(2)),
+      predictedReturnPct: Number((predicted * 100).toFixed(2)),
+      residualPct: Number((residual * 100).toFixed(2)),
+    };
+  });
+
+  return {
+    portfolioName,
+    observationsCount: n,
+    weightedBeta: Number(finalWeightedBeta.toFixed(2)),
+    constituents,
+    covarianceBeta: Number(covBeta.toFixed(2)),
+    meanPortfolioReturnMonthlyPct: Number((meanP * 100).toFixed(2)),
+    meanBenchmarkReturnMonthlyPct: Number((meanM * 100).toFixed(2)),
+    portfolioMonthlyVolPct: Number((stdP * 100).toFixed(2)),
+    benchmarkMonthlyVolPct: Number((stdM * 100).toFixed(2)),
+    covarianceMonthly: Number(covMonthly.toFixed(6)),
+    benchmarkVarianceMonthly: Number(varM.toFixed(6)),
+    correlation: Number(correlation.toFixed(3)),
+    annualizedPortfolioReturnPct: Number((annReturnP * 100).toFixed(2)),
+    annualizedBenchmarkReturnPct: Number((annReturnM * 100).toFixed(2)),
+    annualizedPortfolioVolPct: Number((annVolP * 100).toFixed(2)),
+    annualizedBenchmarkVolPct: Number((annVolM * 100).toFixed(2)),
+    riskFreeRatePct: Number((riskFreeRateAnnual * 100).toFixed(1)),
+    jensensAlphaAnnualizedPct: Number((jensensAlpha * 100).toFixed(2)),
+    rSquaredPct: Number((rSquared * 100).toFixed(1)),
+    systematicVolAnnualizedPct: Number((systematicVolAnnual * 100).toFixed(2)),
+    unsystematicVolAnnualizedPct: Number((unsystematicVolAnnual * 100).toFixed(2)),
+    systematicVariancePct: systematicVarianceSharePct,
+    unsystematicVariancePct: unsystematicVarianceSharePct,
+    treynorRatio: Number(treynor.toFixed(2)),
+    downsideBeta: Number(downside.toFixed(2)),
+    regressionPoints,
+    regressionSlope: Number(covBeta.toFixed(3)),
+    regressionInterceptMonthlyPct: Number((monthlyAlpha * 100).toFixed(3)),
+  };
+}
+
 

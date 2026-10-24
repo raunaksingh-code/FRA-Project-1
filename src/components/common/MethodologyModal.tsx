@@ -146,7 +146,36 @@ export function MethodologyModal({ isOpen, onClose }: { isOpen: boolean; onClose
           <section>
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-slate-900" />
-              4. Stress Testing & Survivorship Bias Governance
+              4. Calculation of Systematic Beta (β) for Both Portfolios
+            </h3>
+            <p className="text-slate-600 mb-2 text-xs">
+              Portfolio systematic risk relative to the NIFTY 50 benchmark is evaluated using two mathematically consistent methods:
+            </p>
+            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-lg font-mono text-xs space-y-2 text-slate-800">
+              <div>
+                <strong className="text-slate-900 font-sans block mb-0.5">Method 1 — Constituent-Weighted Beta:</strong>
+                β_p = ∑ (wᵢ · βᵢ)  where wᵢ = weight of stock i, βᵢ = Cov(Rᵢ, R_m) / Var(R_m)
+              </div>
+              <div className="pt-1 border-t border-slate-200">
+                <strong className="text-slate-900 font-sans block mb-0.5">Method 2 — Empirical Sample Covariance Beta:</strong>
+                β_p = Cov(R_p, R_m) / Var(R_m) = ρ_p,m · (σ_p / σ_m)
+              </div>
+              <div className="pt-1 border-t border-slate-200">
+                <strong className="text-slate-900 font-sans block mb-0.5">CAPM Risk Variance Decomposition:</strong>
+                σ_p² = β_p² · σ_m² (Systematic Risk) + σ_ε² (Unsystematic Specific Risk)
+              </div>
+              <div className="pt-1 border-t border-slate-200">
+                <strong className="text-slate-900 font-sans block mb-0.5">Jensen's Alpha (α) & Treynor Ratio:</strong>
+                α = R_annual - [ R_f + β_p · (R_market_annual - R_f) ]  |  Treynor = (R_annual - R_f) / β_p
+              </div>
+            </div>
+          </section>
+
+          {/* Section 5 */}
+          <section>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-slate-900" />
+              5. Stress Testing & Survivorship Bias Governance
             </h3>
             <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-900 space-y-1.5">
               <div className="flex items-center gap-1.5 font-semibold text-amber-950">
@@ -168,11 +197,11 @@ export function MethodologyModal({ isOpen, onClose }: { isOpen: boolean; onClose
             </div>
           </section>
 
-          {/* Section 5 */}
+          {/* Section 6 */}
           <section>
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-slate-900" />
-              5. Markowitz Mean-Variance Portfolio Optimization
+              6. Markowitz Mean-Variance Portfolio Optimization
             </h3>
             <p className="text-slate-600 text-xs mb-2">
               The Markowitz Efficient Frontier is constructed by solving constrained quadratic programming formulations over annualized returns vector <strong>μ</strong> and covariance matrix <strong>Σ</strong>:
@@ -184,6 +213,7 @@ export function MethodologyModal({ isOpen, onClose }: { isOpen: boolean; onClose
               <div>w^T μ = R_target  (Target expected return constraint)</div>
             </div>
           </section>
+
         </div>
 
         {/* Footer */}

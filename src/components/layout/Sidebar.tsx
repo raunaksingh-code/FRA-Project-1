@@ -165,47 +165,6 @@ export function Sidebar({
               Assumed proxy for 10Y Indian G-Sec yield
             </div>
           </div>
-
-          {/* Rebalancing Frequency */}
-          <div>
-            <label className="block text-[11px] font-medium text-slate-600 mb-1">
-              Rebalancing Mode
-            </label>
-            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-md">
-              <button
-                onClick={() => onChangeFilters({ rebalanceFrequency: 'Monthly' })}
-                className={`py-1 text-[11px] font-medium rounded transition-colors cursor-pointer text-center ${
-                  filters.rebalanceFrequency === 'Monthly'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => onChangeFilters({ rebalanceFrequency: 'BuyAndHold' })}
-                className={`py-1 text-[11px] font-medium rounded transition-colors cursor-pointer text-center ${
-                  filters.rebalanceFrequency === 'BuyAndHold'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Buy & Hold
-              </button>
-            </div>
-          </div>
-
-          {/* Initial Capital Display */}
-          <div className="pt-2 border-t border-slate-200">
-            <div className="flex justify-between text-[11px] text-slate-500">
-              <span>Initial Capital:</span>
-              <span className="font-mono text-slate-800 font-medium">₹15,00,000</span>
-            </div>
-            <div className="flex justify-between text-[11px] text-slate-500 mt-0.5">
-              <span>Stocks per Universe:</span>
-              <span className="font-mono text-slate-800 font-medium">10 Stocks each</span>
-            </div>
-          </div>
         </div>
       </div>
     </aside>

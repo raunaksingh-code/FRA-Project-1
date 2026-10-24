@@ -275,6 +275,10 @@ export default function App() {
                 rolling12A={rolling12A}
                 rolling12B={rolling12B}
                 monthlyReturns={monthlyReturns}
+                returnsA={portfolioSeriesA.map((p) => p.return)}
+                returnsB={portfolioSeriesB.map((p) => p.return)}
+                benchmarkReturns={benchmarkSeries.map((b) => b.return)}
+                dates={monthlyReturns.map((m) => m.date)}
               />
             )}
 
@@ -289,8 +293,12 @@ export default function App() {
                 drawdownB={drawdownSeriesB}
                 filters={filters}
                 onChangeFilters={handleUpdateFilters}
+                weightsA={weightsA}
+                weightsB={weightsB}
+                benchmarkReturns={benchmarkSeries.map((b) => b.return)}
               />
             )}
+
 
             {currentPage === 'stress' && (
               <StressTestingPage

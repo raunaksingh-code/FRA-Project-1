@@ -148,8 +148,9 @@ export interface DownsideRiskMetrics {
 }
 
 export interface HistoricalRiskComparisonPeriod {
-  periodKey: 'calm' | 'covid' | 'recent';
+  periodKey: 'calm' | 'covid' | 'inflation2022' | 'adani2023' | 'election2024' | 'recent' | string;
   periodName: string;
+
   dateRange: string;
   startDate: string;
   endDate: string;
@@ -268,4 +269,59 @@ export interface DescriptiveStatistics {
   jarqueBeraStatistic: number;
   isNormalAt5Pct: boolean;
 }
+
+export interface ConstituentBetaContribution {
+  ticker: string;
+  name: string;
+  sector: string;
+  weightPct: number;
+  rawWeight: number;
+  stockBeta: number;
+  weightedContribution: number;
+  shareOfPortfolioBetaPct: number;
+  riskCategory: string;
+  riskRationale: string;
+}
+
+export interface DetailedPortfolioBetaCalculation {
+  portfolioName: string;
+  observationsCount: number;
+  // Method 1: Constituent-Weighted Portfolio Beta (sum w_i * beta_i)
+  weightedBeta: number;
+  constituents: ConstituentBetaContribution[];
+  // Method 2: Empirical Sample Covariance Beta (Cov(Rp, Rm) / Var(Rm))
+  covarianceBeta: number;
+  meanPortfolioReturnMonthlyPct: number;
+  meanBenchmarkReturnMonthlyPct: number;
+  portfolioMonthlyVolPct: number;
+  benchmarkMonthlyVolPct: number;
+  covarianceMonthly: number;
+  benchmarkVarianceMonthly: number;
+  correlation: number;
+  // Risk Decomposition & CAPM Parameters
+  annualizedPortfolioReturnPct: number;
+  annualizedBenchmarkReturnPct: number;
+  annualizedPortfolioVolPct: number;
+  annualizedBenchmarkVolPct: number;
+  riskFreeRatePct: number;
+  jensensAlphaAnnualizedPct: number;
+  rSquaredPct: number;
+  systematicVolAnnualizedPct: number;
+  unsystematicVolAnnualizedPct: number;
+  systematicVariancePct: number;
+  unsystematicVariancePct: number;
+  treynorRatio: number;
+  downsideBeta: number;
+  // Security Characteristic Line (Regression Scatter Data)
+  regressionPoints: {
+    date: string;
+    marketReturnPct: number;
+    portfolioReturnPct: number;
+    predictedReturnPct: number;
+    residualPct: number;
+  }[];
+  regressionSlope: number;
+  regressionInterceptMonthlyPct: number;
+}
+
 
